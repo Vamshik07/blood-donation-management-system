@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+{% block title %}Let’s Save Lives | Home{% endblock %}
+
+{% block content %}
+<section class="hero-card">
+    <div class="hero-left">
+        <h2>Saving Lives Starts With One Drop</h2>
+        <p>
+            Let’s Save Lives is a centralized blood donation platform connecting donors, hospitals, and blood camps —
+            built to reduce emergency delays and make every second count.
+        </p>
+        <p><strong>Every 2 seconds, someone needs blood. One donation can save up to 3 lives.</strong></p>
+        <div class="toggle-row">
+            <a class="btn btn-primary" href="{{ url_for('auth.login', role='donor') }}">🔴 Become a Donor</a>
+            <a class="btn btn-outline" href="{{ url_for('auth.login', role='hospital') }}">🔵 Request Blood</a>
+            <a class="btn btn-outline" href="{{ url_for('auth.login', role='camp') }}">⚪ Explore Camps</a>
+        </div>
+    </div>
+    <div class="hero-image-wrap">
+        <img src="https://images.unsplash.com/photo-1584982751601-97dcc096659c?auto=format&fit=crop&w=1000&q=80" alt="Blood donation awareness" class="hero-image">
+    </div>
+</section>
+
+<section class="two-col section-card">
+    <div>
+        <img src="https://images.unsplash.com/photo-1615461066841-6116e61058f4?auto=format&fit=crop&w=1000&q=80" alt="Blood donation" class="section-image">
+    </div>
+    <div class="why-system-content">
+        <h3>Why Blood Donation Matters</h3>
+        <p><strong>Blood cannot be manufactured. It can only come from generous people like you.</strong></p>
+        <ul class="clean-list">
+            <li>Accident victims need immediate transfusions</li>
+            <li>Cancer patients require regular blood support</li>
+            <li>Mothers during childbirth may need emergency units</li>
+            <li>Children with thalassemia depend on frequent donations</li>
+            <li>Your donation can become someone’s second chance at life</li>
+        </ul>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>How Let’s Save Lives Works</h3>
+    <div class="about-grid">
+        <article>
+            <h4>1️⃣ Donor Registers</h4>
+            <p>People sign up, check eligibility, and become available for life-saving donations.</p>
+        </article>
+        <article>
+            <h4>2️⃣ Hospital Requests</h4>
+            <p>Hospitals place real-time blood requests digitally instead of relying on manual calls.</p>
+        </article>
+        <article>
+            <h4>3️⃣ Smart Match + Approval</h4>
+            <p>Our system matches donors and available stock, then tracks approval and fulfillment transparently.</p>
+        </article>
+    </div>
+    <p class="tagline">Fast. Secure. Transparent.</p>
+</section>
+
+<section class="section-card">
+    <h3>Key Features</h3>
+    <ul class="clean-list">
+        <li>Real-time blood request and approval workflow</li>
+        <li>Inventory tracking with expiry-based status updates</li>
+        <li>Smart donor matching by location, availability, and priority</li>
+        <li>Blood camp management with event progress and reporting</li>
+        <li>Emergency-first request handling for critical cases</li>
+        <li>Admin analytics dashboard for data-driven decisions</li>
+    </ul>
+</section>
+
+<section class="section-card">
+    <h3>Why Choose This Platform?</h3>
+    <div class="about-grid">
+        <article>
+            <h4>Trusted Coordination</h4>
+            <p>
+                Donors, hospitals, and camps work in one connected ecosystem with clear accountability.
+            </p>
+        </article>
+        <article>
+            <h4>Operational Reliability</h4>
+            <p>
+                From request to allocation, every step is tracked with status history and unit-level visibility.
+            </p>
+        </article>
+        <article>
+            <h4>Human-Centered Impact</h4>
+            <p>
+                We are not just digitizing blood operations — we are helping communities respond faster and save more lives.
+            </p>
+        </article>
+    </div>
+    <p class="tagline">Built with technology. Driven by humanity.</p>
+</section>
+
+<section class="section-card center-block">
+    <h3>Real Impact</h3>
+    <div class="stats-grid" style="margin-top:20px;">
+        <div class="stat-card"><strong>1 Donation</strong><span>Up to 3 Lives Saved</span></div>
+        <div class="stat-card"><strong>Every 2 Seconds</strong><span>Someone Needs Blood</span></div>
+        <div class="stat-card"><strong>100%</strong><span>Transparent Request Tracking</span></div>
+    </div>
+    <p class="tagline">Together, we reduce delays. Together, we save lives.</p>
+</section>
+
+<section class="section-card center-block">
+    <h3>Be Someone’s Reason to Live Today.</h3>
+    <p>Your small step can become someone’s second chance.</p>
+    <div class="toggle-row" style="justify-content:center; margin-top:12px;">
+        <a class="btn btn-primary" href="{{ url_for('auth.login', role='donor') }}">🔴 Register as Donor</a>
+        <a class="btn btn-outline" href="{{ url_for('auth.login', role='hospital') }}">🏥 Raise Blood Request</a>
+        <a class="btn btn-outline" href="{{ url_for('auth.login', role='camp') }}">🏕 Organize Blood Camp</a>
+    </div>
+    <p class="tagline">Let’s Save Lives — Together.</p>
+</section>
+{% endblock %}

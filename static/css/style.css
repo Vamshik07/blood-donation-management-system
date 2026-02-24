@@ -1,0 +1,512 @@
+:root {
+    --red: #d62839;
+    --red-dark: #a4161a;
+    --white: #ffffff;
+    --light: #fff5f6;
+    --text: #2b2d42;
+    --muted: #6b7280;
+    --border: #f3d3d7;
+    --shadow: 0 10px 30px rgba(214, 40, 57, 0.12);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(180deg, #fffdfd 0%, #fff2f4 100%);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.container {
+    width: 98%;
+    margin: 0 auto;
+    max-width: 1800px;
+}
+
+/* Full-width container for admin dashboard donor tables */
+.container-wide {
+    width: 98%;
+    margin: 0 auto;
+    max-width: 1900px;
+}
+
+.main-header {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 0;
+    flex-wrap: wrap;
+}
+
+.brand {
+    margin: 0;
+    color: var(--red-dark);
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.nav-minimal {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.nav-minimal a {
+    text-decoration: none;
+    color: var(--red-dark);
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.page-main {
+    padding: 24px 0 40px;
+    width: 98%;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.flash-wrap {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.flash {
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: var(--shadow);
+}
+
+.flash-success {
+    background: #e8f9ef;
+}
+
+.flash-error {
+    background: #ffe6ea;
+}
+
+.hero-card,
+.section-card,
+.role-card,
+.stat-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+}
+
+.hero-card {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    overflow: hidden;
+    margin-bottom: 28px;
+    min-height: 420px;
+}
+
+.hero-left {
+    padding: 48px 42px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.hero-left h2 {
+    margin: 0 0 20px 0;
+    color: var(--red-dark);
+    font-weight: 700;
+    font-size: 2.8rem;
+    line-height: 1.2;
+}
+
+.hero-left p {
+    font-size: 1.1rem;
+    line-height: 1.7;
+    color: var(--text);
+    margin: 0 0 28px 0;
+}
+
+.section-card h2,
+.section-card h3,
+.section-card h4 {
+    margin-top: 0;
+    color: var(--red-dark);
+    font-weight: 700;
+    font-size: 1.8rem;
+}
+
+.hero-image-wrap,
+.section-image {
+    height: 100%;
+}
+
+.hero-image,
+.section-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.section-card {
+    padding: 42px;
+    margin-bottom: 28px;
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.section-card p {
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.8;
+    color: var(--text);
+    margin: 0 0 12px 0;
+}
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    overflow: hidden;
+}
+
+.why-system-content {
+    padding: 48px 42px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.why-system-content h3 {
+    margin: 0 0 28px 0;
+    font-size: 2rem;
+}
+
+.clean-list {
+margin: 0;
+    padding-left: 0;
+    line-height: 2.2;
+    font-size: 1.05rem;
+    font-weight: 600;
+    list-style-type: none;
+}
+
+.clean-list li {
+    position: relative;
+    padding-left: 28px;
+    margin-bottom: 12px;
+}
+
+.clean-list li:before {
+    content: "✓";
+    position: absolute;
+    left: 0;
+    color: var(--red);
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.center-block {
+    text-align: center;
+}
+
+.center-block h3 {
+    font-size: 2rem;
+    margin: 0;
+}
+
+.tagline {
+    margin-top: 28px;
+    font-weight: 700;
+    font-size: 1.15rem;
+    color: var(--red-dark);
+    font-style: italic;
+    text-align: center;
+}
+
+.about-grid,
+.role-grid,
+.stats-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.about-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.about-grid article {
+    padding: 12px 0;
+}
+
+.about-grid h4 {
+    font-size: 1.3rem;
+    margin: 0 0 16px 0;
+}
+
+.role-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.role-card {
+    display: block;
+    padding: 26px;
+    text-decoration: none;
+    color: inherit;
+}
+
+.role-card:hover {
+    border-color: var(--red);
+}
+
+.btn {
+    border: none;
+    border-radius: 12px;
+    background: var(--red);
+    color: var(--white);
+    padding: 14px 32px;
+    text-decoration: none;
+    display: inline-block;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 1.05rem;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    background: var(--red-dark);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(214, 40, 57, 0.3);
+}
+
+.btn-xl {
+    padding: 14px 24px;
+    font-size: 1.05rem;
+}
+
+.btn-outline {
+    background: transparent;
+    color: var(--red-dark);
+    border: 1px solid var(--red-dark);
+}
+
+.btn-sm {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+
+.form-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.form-grid label {
+    display: grid;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 15px;
+}
+
+input,
+select {
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+select {
+    font-size: 14px;
+}
+
+.check {
+    display: flex !important;
+    align-items: center;
+    gap: 8px;
+}
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th,
+.table td {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 10px;
+    text-align: left;
+    vertical-align: top;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.toggle-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.hidden {
+    display: none;
+}
+
+.stats-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: 14px;
+}
+
+.stat-card {
+    padding: 20px;
+    text-align: center;
+}
+
+.stat-card strong {
+    display: block;
+    font-size: 1.8rem;
+    color: var(--red-dark);
+    font-weight: 700;
+}
+
+.status-pill {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-weight: 700;
+}
+
+.status-pill.pending {
+    background: #fff3cd;
+}
+
+.status-pill.approved {
+    background: #d1fae5;
+}
+
+/* Full-width donor section */
+.donor-full-width {
+    max-width: 100%;
+    width: 100%;
+}
+
+.table-responsive {
+    overflow-x: auto;
+    margin-top: 16px;
+}
+
+.table-spaced th,
+.table-spaced td {
+    padding: 16px 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    border: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.table-spaced thead th {
+    background: #fff5f6;
+    font-weight: 700;
+    color: var(--red-dark);
+    border: 1px solid var(--red);
+    font-size: 1rem;
+    padding: 16px 12px;
+}
+
+.table-spaced tbody tr:hover {
+    background: #fffbfc;
+}
+
+.table-spaced tbody tr {
+    border: 1px solid var(--border);
+    height: 50px;
+}
+
+.table-spaced tbody td {
+    border: 1px solid var(--border);
+    vertical-align: middle;
+    font-size: 14px;
+}
+
+.table-spaced {
+    border-collapse: collapse;
+    border: 2px solid var(--red);
+    font-size: 15px;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.status-badge.status-pending {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-badge.status-completed {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+@media (max-width: 900px) {
+    .hero-card,
+    .two-col,
+    .about-grid,
+    .role-grid,
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-left h2 {
+        font-size: 2.2rem;
+    }
+
+    .hero-left p {
+        font-size: 1rem;
+    }
+
+    .hero-left,
+    .why-system-content {
+        padding: 32px 28px;
+    }
+
+    .section-card {
+        padding: 28px 24px;
+    }
+
+    .section-card h3 {
+        font-size: 1.6rem;
+    }
+
+    .brand {
+        font-size: 1.5rem;
+    }
+}

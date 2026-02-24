@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+{% block title %}Blood Camp Dashboard{% endblock %}
+
+{% block content %}
+<section class="section-card">
+    <h2>Blood Camp Dashboard</h2>
+    <p>Manage your camp profile and run donation events.</p>
+
+    <form method="POST" class="form-grid">
+        <input type="hidden" name="action" value="update_profile">
+        <label>Camp Name<input type="text" name="camp_name" value="{{ camp.camp_name or '' }}" required></label>
+        <label>Contact Number<input type="text" name="phone" value="{{ camp.phone or '' }}" required></label>
+        <label>Location<input type="text" name="location" value="{{ camp.location or '' }}" required></label>
+        <label>Number of Days<input type="number" min="1" name="days" value="{{ camp.days or '' }}" required></label>
+        <label>Slots per Day<input type="number" min="1" name="slots_per_day" value="{{ camp.slots_per_day or '' }}" required></label>
+        <label>Expected Donors Count<input type="number" min="1" name="expected_donors" value="{{ camp.expected_donors or '' }}" required></label>
+        <button class="btn btn-primary" type="submit">Submit Request for Approval</button>
+    </form>
+
+    {% set profile_complete = camp.camp_name and camp.city and camp.email %}
+    {% if profile_complete %}
+    <div class="status-pill {% if camp.approved %}approved{% else %}pending{% endif %}">
+        Camp Status: {% if camp.approved %}Approved{% else %}Pending Admin Approval{% endif %}
+    </div>
+    {% else %}
+    <div class="status-pill" style="background:#f0f0f0;color:#666;border-color:#ddd;">
+        Status: Profile Incomplete - Fill in details above and submit
+    </div>
+    {% endif %}
+</section>
+
+<section class="section-card">
+    <h3>Camp Statistics</h3>
+    <div class="stats-grid">
+        <div class="stat-card"><strong>{{ camp_stats.total_units }}</strong><span>Total Units Collected</span></div>
+        <div class="stat-card"><strong>{{ camp_stats.most_common_blood_group }}</strong><span>Most Common Blood Group</span></div>
+        <div class="stat-card"><strong>{{ camp_stats.success_rate }}%</strong><span>Donation Success Rate</span></div>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>Create Upcoming Donation Event</h3>
+    {% if camp.approved %}
+    <form method="POST" class="form-grid">
+        <input type="hidden" name="action" value="create_event">
+        <label>Event Name<input type="text" name="event_name" required></label>
+        <label>Location<input type="text" name="event_location" value="{{ camp.location or '' }}" required></label>
+        <label>Date<input type="date" name="event_date" required></label>
+        <label>Target Units<input type="number" min="1" name="target_units" required></label>
+        <label>Contact Info<input type="text" name="event_contact" value="{{ camp.phone or '' }}"></label>
+        <label>Required Blood Groups</label>
+        <div style="display:flex; gap:14px; flex-wrap:wrap; margin-bottom:8px;">
+            {% for bg in blood_groups %}
+            <label class="check" style="min-width:72px;">
+                <input type="checkbox" name="required_blood_groups" value="{{ bg }}">
+                {{ bg }}
+            </label>
+            {% endfor %}
+        </div>
+        <button class="btn btn-primary" type="submit">Create Event</button>
+    </form>
+    {% else %}
+    <p>Camp approval is required before creating events.</p>
+    {% endif %}
+</section>
+
+<section class="section-card">
+    <h3>Upcoming Events</h3>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Required Groups</th>
+                    <th>Target</th>
+                    <th>Registered</th>
+                    <th>Donated</th>
+                    <th>Units Collected</th>
+                    <th>Progress</th>
+                    <th>Report</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in upcoming_events %}
+                <tr>
+                    <td>{{ event.event_name }}</td>
+                    <td>{{ event.event_date }}</td>
+                    <td>{{ event.location }}</td>
+                    <td>{{ event.required_groups or 'N/A' }}</td>
+                    <td>{{ event.target_units }}</td>
+                    <td>{{ event.total_registered }}</td>
+                    <td>{{ event.donated_count or 0 }}</td>
+                    <td>{{ event.units_collected or 0 }}</td>
+                    <td>
+                        <div style="width:140px;background:#f3d3d7;border-radius:8px;overflow:hidden;">
+                            <div style="height:10px;background:var(--red);width:{{ [event.progress_percent or 0, 100] | min }}%;"></div>
+                        </div>
+                        <div style="font-size:0.85rem;margin-top:4px;">{{ event.progress_percent or 0 }}%</div>
+                    </td>
+                    <td><a class="btn btn-sm btn-outline" href="{{ url_for('camp.event_report_csv', event_id=event.id) }}">CSV</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" style="text-align:center;padding:20px;">No upcoming events.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>Registered Donors</h3>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th>Donor</th>
+                    <th>Blood Group</th>
+                    <th>Verification</th>
+                    <th>Phone</th>
+                    <th>Preferred Slot</th>
+                    <th>Status</th>
+                    <th>Units</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in registered_donors %}
+                <tr>
+                    <td>{{ row.event_name }}</td>
+                    <td>{{ row.event_date }}</td>
+                    <td>{{ row.donor_name }}</td>
+                    <td>{{ row.blood_group or 'N/A' }}</td>
+                    <td>
+                        {% if row.blood_group == 'UNKNOWN' or not row.blood_group %}
+                        <span style="color:#856404;font-size:0.85rem;">⚠ Will test</span>
+                        {% elif row.blood_group_verified %}
+                        <span style="color:green;font-weight:bold;font-size:0.85rem;">✓ Verified</span>
+                        {% else %}
+                        <span style="color:#ff9800;font-size:0.85rem;">Self-reported</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ row.phone or 'N/A' }}</td>
+                    <td>{{ row.preferred_slot }}</td>
+                    <td>{{ row.registration_status }}</td>
+                    <td>{{ row.units_collected or 0 }}</td>
+                    <td>
+                        {% if row.registration_status != 'Donated' %}
+                        <form method="POST" action="{{ url_for('camp.complete_registration', registration_id=row.registration_id) }}" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <input type="number" min="1" max="5" name="units_collected" value="1" required style="width:64px; padding:6px;">
+                            {% if row.blood_group == 'UNKNOWN' or not row.blood_group or not row.blood_group_verified %}
+                            <select name="blood_group_tested" style="padding:6px;">
+                                <option value="">{% if row.blood_group and row.blood_group != 'UNKNOWN' %}{{ row.blood_group }} (self){% else %}Test blood group{% endif %}</option>
+                                {% for bg in ['A+','A-','B+','B-','AB+','AB-','O+','O-'] %}
+                                <option value="{{ bg }}">{{ bg }}</option>
+                                {% endfor %}
+                            </select>
+                            {% endif %}
+                            <button class="btn btn-sm" type="submit">Mark Donated</button>
+                        </form>
+                        {% else %}
+                        <span style="color:green;font-weight:700;">✓ Completed</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="10" style="text-align:center;padding:20px;">No donor registrations yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>Past Camps History</h3>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Target Units</th>
+                    <th>Registered Donors</th>
+                    <th>Total Units Collected</th>
+                    <th>Status</th>
+                    <th>Report</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in past_events %}
+                <tr>
+                    <td>{{ event.event_name }}</td>
+                    <td>{{ event.event_date }}</td>
+                    <td>{{ event.location }}</td>
+                    <td>{{ event.target_units }}</td>
+                    <td>{{ event.total_registered }}</td>
+                    <td>{{ event.units_collected or 0 }}</td>
+                    <td>{{ event.status }}</td>
+                    <td><a class="btn btn-sm btn-outline" href="{{ url_for('camp.event_report_csv', event_id=event.id) }}">CSV</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" style="text-align:center;padding:20px;">No past events found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

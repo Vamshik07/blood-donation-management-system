@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}{{ role|title }} Login{% endblock %}
+
+{% block content %}
+<section class="section-card center-block">
+    <h2>{{ role|title }} Login</h2>
+    {% if role == 'admin' %}
+    <p>Admin email and password must already exist in database.</p>
+    {% endif %}
+
+    {% if role != 'admin' and google_configured %}
+    <div style="margin-bottom:18px;">
+        <a class="btn" href="{{ url_for('auth.google_login', role=role) }}" style="width:100%;max-width:400px;margin:0 auto;display:block;text-align:center;">
+            <strong>Continue with Google</strong>
+        </a>
+    </div>
+    
+    <div style="text-align:center;margin:12px 0;color:#999;font-size:14px;">
+        <span>or use email/password</span>
+    </div>
+    {% endif %}
+
+    <form method="POST" class="form-grid" style="max-width:520px;margin:0 auto;">
+        <label>Email<input type="email" name="email" required></label>
+        <label>Password<input type="password" name="password" required></label>
+        <button class="btn btn-primary" type="submit">Login</button>
+    </form>
+
+    <div style="margin-top:12px;">
+        <a href="{{ url_for('auth.forgot_password') }}">Forgot Password?</a>
+        {% if role != 'admin' %}
+        <span style="margin:0 8px;">|</span>
+        <a href="{{ url_for('auth.register', role=role) }}">Create Account</a>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

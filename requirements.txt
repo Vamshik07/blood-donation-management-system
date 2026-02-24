@@ -1,0 +1,11 @@
+Flask
+Flask-MySQLdb
+Flask-Login
+Flask-Bcrypt
+Flask-Mail
+Flask-Limiter
+Flask-Dance
+python-dotenv
+authlib
+PyJWT
+twilio

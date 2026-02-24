@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% block title %}Hospital Dashboard{% endblock %}
+
+{% block content %}
+<section class="section-card">
+    <h2>Hospital Dashboard</h2>
+    <p>Profile approval is required before blood requests can be placed.</p>
+
+    <form method="POST" class="form-grid">
+        <input type="hidden" name="action" value="profile">
+        <label>Hospital Name<input type="text" name="name" value="{{ hospital.name or '' }}" required></label>
+        <label>Hospital Address<input type="text" name="address" value="{{ hospital.address or '' }}" required></label>
+        <label>Contact Number<input type="text" name="phone" value="{{ hospital.phone or '' }}" required></label>
+        <button class="btn btn-primary" type="submit">Submit Hospital Profile</button>
+    </form>
+
+    {% set profile_complete = hospital.name and hospital.city and hospital.email %}
+    {% if profile_complete %}
+    <div class="status-pill {% if hospital.approved %}approved{% else %}pending{% endif %}">
+        Hospital Status: {% if hospital.approved %}Approved{% else %}Pending Admin Approval{% endif %}
+    </div>
+    {% else %}
+    <div class="status-pill" style="background:#f0f0f0;color:#666;border-color:#ddd;">
+        Status: Profile Incomplete - Fill in details above and submit
+    </div>
+    {% endif %}
+</section>
+
+<section class="section-card">
+    <h3>Available Blood Stock</h3>
+    <p>Current inventory of available donated blood by blood group.</p>
+
+    {% if emergency_stock_alerts %}
+    <div class="flash flash-error" style="margin-top:14px;">
+        Emergency Stock Alert:
+        {% for alert in emergency_stock_alerts %}
+            {{ alert.blood_group }} ({{ alert.units_available }} units){% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </div>
+    {% elif low_stock_alerts %}
+    <div class="flash flash-error" style="margin-top:14px;">
+        Low Stock Warning:
+        {% for alert in low_stock_alerts %}
+            {{ alert.blood_group }} ({{ alert.units_available }} units){% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="margin-top: 16px;">
+        <table class="table" style="max-width: 600px;">
+            <thead>
+                <tr>
+                    <th style="width: 200px;">Blood Group</th>
+                    <th style="width: 200px;">Units Available</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if blood_stock %}
+                {% for stock in blood_stock %}
+                <tr>
+                    <td style="font-weight: bold; font-size: 1.1rem;">{{ stock.blood_group }}</td>
+                    <td style="font-size: 1.1rem; color: var(--red-dark);"><strong>{{ stock.units_available or 0 }} units</strong></td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr><td colspan="2" style="text-align: center; padding: 20px;">No blood stock data available.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>Blood Request Form</h3>
+    <p>Rule applied: 1 unit = 450ml. Emergency requests are prioritized.</p>
+
+    <form method="POST" class="form-grid">
+        <input type="hidden" name="action" value="request">
+        <label>Patient Name<input type="text" name="patient_name" required></label>
+        <label>Blood Group Required
+            <select name="blood_group" required>
+                <option value="">Select</option>
+                {% for bg in ['A+','A-','B+','B-','AB+','AB-','O+','O-'] %}
+                <option value="{{ bg }}">{{ bg }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Units Needed<input type="number" min="1" name="units_required" required></label>
+        <label>Hospital Address<input type="text" name="hospital_address" required></label>
+        <label>Contact Number<input type="text" name="contact_number" required></label>
+        <label class="check"><input type="checkbox" name="emergency"> Emergency / Normal Toggle</label>
+        <button class="btn btn-primary" type="submit">Submit Request to Admin</button>
+    </form>
+</section>
+
+<section class="section-card">
+    <h3>Recent Requests</h3>
+    <table class="table">
+        <thead><tr><th>ID</th><th>Patient</th><th>Group</th><th>Units</th><th>Required ML</th><th>Emergency</th><th>Status</th><th>Transferred Units</th><th>Transferred At</th><th>Allocation IDs</th></tr></thead>
+        <tbody>
+        {% for row in requests %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.patient_name }}</td>
+                <td>{{ row.blood_group }}</td>
+                <td>{{ row.units_required }}</td>
+                <td>{{ row.required_ml }}</td>
+                <td>{% if row.emergency %}Yes{% else %}No{% endif %}</td>
+                <td>{{ row.display_status }}</td>
+                <td>{% if row.display_status == 'Transferred' %}{{ row.transferred_units or row.units_required }}{% else %}-{% endif %}</td>
+                <td>{% if row.transferred_at %}{{ row.transferred_at }}{% else %}-{% endif %}</td>
+                <td>{% if row.allocation_details %}{{ row.allocation_details }}{% else %}-{% endif %}</td>
+            </tr>
+        {% else %}
+            <tr><td colspan="10">No requests submitted yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Matched Donors (Latest Request)</h3>
+    <table class="table">
+        <thead><tr><th>ID</th><th>Name</th><th>Blood Group</th><th>Address</th><th>Phone</th><th>Last Donation</th><th>Match Score</th></tr></thead>
+        <tbody>
+        {% for row in donor_matches %}
+            <tr>
+                <td>{{ row[0] }}</td>
+                <td>{{ row[1] }}</td>
+                <td>{{ row[2] }}</td>
+                <td>{{ row[3] }}</td>
+                <td>{{ row[4] }}</td>
+                <td>{{ row[5] or 'N/A' }}</td>
+                <td><strong>{{ row[6] }}</strong></td>
+            </tr>
+        {% else %}
+            <tr><td colspan="7">No matching approved donors yet.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Blood Transfer History</h3>
+    <p>All approved and transferred blood requests with units and dates.</p>
+    <table class="table" style="font-size: 0.95rem;">
+        <thead>
+            <tr>
+                <th>Request ID</th>
+                <th>Patient</th>
+                <th>Blood Type</th>
+                <th>Units Transferred</th>
+                <th>Transferred At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if transfer_history %}
+            {% for record in transfer_history %}
+            <tr>
+                <td>#{{ record.id }}</td>
+                <td>{{ record.patient_name }}</td>
+                <td>{{ record.blood_group }}</td>
+                <td>{{ record.transferred_units }} unit(s)</td>
+                <td>{% if record.transferred_at %}{{ record.transferred_at }}{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr><td colspan="5" style="text-align: center; padding: 20px;">No transfer history yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Request Status Timeline</h3>
+    <table class="table" style="font-size: 0.95rem;">
+        <thead>
+            <tr>
+                <th>Request ID</th>
+                <th>Status</th>
+                <th>Note</th>
+                <th>Updated By</th>
+                <th>When</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if request_timeline %}
+            {% for row in request_timeline %}
+            <tr>
+                <td>#{{ row.request_id }}</td>
+                <td>{{ row.status }}</td>
+                <td>{{ row.note or '—' }}</td>
+                <td>{{ row.changed_by_role }}</td>
+                <td>{{ row.created_at }}</td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr><td colspan="5" style="text-align: center; padding: 20px;">No timeline entries yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Unit Tracking Details</h3>
+    <table class="table" style="font-size: 0.95rem;">
+        <thead>
+            <tr>
+                <th>Tracking ID</th>
+                <th>Request ID</th>
+                <th>Patient</th>
+                <th>Blood Group</th>
+                <th>Collection Source</th>
+                <th>Collection Date</th>
+                <th>Expiry Date</th>
+                <th>Used At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if allocation_tracking %}
+            {% for row in allocation_tracking %}
+            <tr>
+                <td>{{ row.unit_tracking_id }}</td>
+                <td>#{{ row.request_id }}</td>
+                <td>{{ row.patient_name }}</td>
+                <td>{{ row.blood_group }}</td>
+                <td>{{ row.collection_source }}</td>
+                <td>{{ row.collection_date }}</td>
+                <td>{{ row.expiry_date }}</td>
+                <td>{{ row.used_at or '—' }}</td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr><td colspan="8" style="text-align: center; padding: 20px;">No allocated units tracked yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Your Hospital Activity Log</h3>
+    <table class="table" style="font-size: 0.95rem;">
+        <thead>
+            <tr>
+                <th>Action</th>
+                <th>Entity</th>
+                <th>Details</th>
+                <th>When</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if hospital_logs %}
+            {% for log in hospital_logs %}
+            <tr>
+                <td>{{ log.action }}</td>
+                <td>{{ log.entity_type }}</td>
+                <td>{{ log.details or '—' }}</td>
+                <td style="font-size: 0.9rem;">{{ log.created_at }}</td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr><td colspan="4" style="text-align: center; padding: 20px;">No activity yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</section>
+{% endblock %}

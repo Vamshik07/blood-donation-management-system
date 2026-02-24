@@ -1,0 +1,498 @@
+{% extends 'base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+    /* Override container width for admin dashboard */
+    .page-main {
+        max-width: 100%;
+        width: 98%;
+        margin-left: auto;
+        margin-right: auto;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="section-card">
+    <h2>Admin Dashboard</h2>
+    <p>Admin-only approval authority for pending requests.</p>
+
+    <div class="stats-grid">
+        <div class="stat-card"><strong>{{ total_donors }}</strong><span>Total Donors</span></div>
+        <div class="stat-card"><strong>{{ total_requests }}</strong><span>Total Requests</span></div>
+        <div class="stat-card"><strong>{{ approved_camps }}</strong><span>Approved Camps</span></div>
+    </div>
+
+    <div class="stats-grid" style="margin-top:12px;">
+        <div class="stat-card"><strong>{{ approval_rate }}%</strong><span>Approval Rate</span></div>
+        <div class="stat-card"><strong>{{ (most_active_camp.camp_name if most_active_camp else 'N/A') }}</strong><span>Most Active Camp</span></div>
+        <div class="stat-card"><strong>{{ (most_active_camp.units_collected if most_active_camp else 0) }}</strong><span>Top Camp Units</span></div>
+    </div>
+    
+    <!-- Blood Group Verification Stats -->
+    <div class="stats-grid" style="margin-top:12px;">
+        <div class="stat-card" style="background:#d4edda;border-color:#c3e6cb;">
+            <strong>{{ verified_donors }}</strong>
+            <span>✓ Verified Blood Groups</span>
+        </div>
+        <div class="stat-card" style="background:#fff3cd;border-color:#ffc107;">
+            <strong>{{ unverified_donors }}</strong>
+            <span>⚠ Pending Verification (Self-reported)</span>
+        </div>
+        <div class="stat-card" style="background:#f8d7da;border-color:#f5c6cb;">
+            <strong>{{ unknown_blood_group_donors }}</strong>
+            <span>? Unknown Blood Group</span>
+        </div>
+    </div>
+
+    {% if emergency_stock_alerts %}
+    <div class="flash flash-error" style="margin-top:16px;">
+        Emergency Stock Alert:
+        {% for alert in emergency_stock_alerts %}
+            {{ alert.blood_group }} ({{ alert.units_available }} units){% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </div>
+    {% elif low_stock_alerts %}
+    <div class="flash flash-error" style="margin-top:16px;">
+        Low Stock Warning:
+        {% for alert in low_stock_alerts %}
+            {{ alert.blood_group }} ({{ alert.units_available }} units){% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="toggle-row">
+        <button class="btn btn-primary toggle-btn" data-target="donor-section">Donor Requests</button>
+        <button class="btn btn-primary toggle-btn" data-target="hospital-section">Hospital Requests</button>
+        <button class="btn btn-primary toggle-btn" data-target="camp-section">Blood Camp Requests</button>
+    </div>
+</section>
+
+<section id="donor-section" class="section-card request-section active donor-full-width">
+    <h3>Blood Stock Inventory</h3>
+    <div style="margin-bottom:24px;">
+        <table class="table table-spaced" style="max-width:600px;">
+            <thead>
+                <tr>
+                    <th style="width:120px;">Blood Group</th>
+                    <th style="width:150px;">Units Available</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if blood_stock %}
+                {% for stock in blood_stock %}
+                <tr>
+                    <td style="font-weight:bold;font-size:1.1rem;">{{ stock.blood_group }}</td>
+                    <td style="font-size:1.1rem;color:var(--red-dark);"><strong>{{ stock.units_available or 0 }} units</strong></td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr><td colspan="2" style="text-align:center;padding:20px; font-size: 100px;">No blood stock data available.</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3>Donor Requests</h3>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th style="width:50px;">ID</th>
+                    <th style="width:150px;">Name</th>
+                    <th style="width:200px;">Email</th>
+                    <th style="width:100px;">Blood Group</th>
+                    <th style="width:140px;">Phone</th>
+                    <th style="width:220px;">Schedule Date</th>
+                    <th style="width:100px;">Approve</th>
+                    <th style="width:80px;">Reject</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in donors %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ row.name or 'N/A' }}</td>
+                    <td>{{ row.email }}</td>
+                    <td>{{ row.blood_group or 'N/A' }}</td>
+                    <td>{{ row.phone or 'N/A' }}</td>
+                    <td style="padding:10px;">
+                        <input type="date" name="scheduled_donation_at" form="approve-donor-{{ row.id }}" required style="width:100%;padding:6px;">
+                    </td>
+                    <td>
+                        <form id="approve-donor-{{ row.id }}" method="POST" action="{{ url_for('admin.approve_donor_with_schedule', donor_id=row.id) }}" style="display:inline;">
+                            <button class="btn btn-sm" type="submit">Approve</button>
+                        </form>
+                    </td>
+                    <td><a class="btn btn-sm btn-outline" href="{{ url_for('admin.reject_entity', entity='donor', entity_id=row.id) }}">Reject</a></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" style="text-align:center;padding:20px;">No pending donor requests.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h3 style="margin-top:32px;">Recently Approved Donors</h3>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th style="width:50px;">ID</th>
+                    <th style="width:140px;">Name</th>
+                    <th style="width:180px;">Email</th>
+                    <th style="width:100px;">Blood Group</th>
+                    <th style="width:120px;">Verification</th>
+                    <th style="width:120px;">Phone</th>
+                    <th style="width:110px;">Registered</th>
+                    <th style="width:110px;">Approved</th>
+                    <th style="width:110px;">Scheduled</th>
+                    <th style="width:90px;">Status</th>
+                    <th style="width:100px;">Units</th>
+                    <th style="width:140px;">Complete</th>
+                    <th style="width:140px;">Reschedule</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in approved_donors %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ row.name or 'N/A' }}</td>
+                    <td>{{ row.email }}</td>
+                    <td>{{ row.blood_group or 'N/A' }}</td>
+                    <td>
+                        {% if row.blood_group == 'UNKNOWN' or not row.blood_group %}
+                        <span style="color:#856404;font-size:0.85rem;">⚠ Unknown</span>
+                        {% elif row.blood_group_verified %}
+                        <span style="color:green;font-weight:bold;font-size:0.85rem;">✓ Verified</span>
+                        {% else %}
+                        <span style="color:#ff9800;font-size:0.85rem;">⚠ Self-reported</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ row.phone or 'N/A' }}</td>
+                    <td style="font-size:0.9rem;">{{ row.registered_at }}</td>
+                    <td style="font-size:0.9rem;">{{ row.approved_at }}</td>
+                    <td style="font-size:0.9rem;">{% if row.scheduled_donation_at %}{{ row.scheduled_donation_at.strftime('%Y-%m-%d') }}{% else %}N/A{% endif %}</td>
+                    <td>
+                        {% if (row.donation_status or 'Pending') == 'Completed' %}
+                        <span class="status-badge status-completed">Completed</span>
+                        {% else %}
+                        <span class="status-badge status-pending">Pending</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-weight:bold;font-size:1rem;color:var(--red-dark);">{{ row.units_donated or 0 }} units</td>
+                    <td>
+                        {% if (row.donation_status or 'Pending') != 'Completed' %}
+                        <form method="POST" action="{{ url_for('admin.complete_donor_donation', donor_id=row.id) }}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                            <input type="number" name="units_donated" min="1" max="5" value="1" required style="padding:6px;width:60px;">
+                            <button class="btn btn-sm" type="submit">Complete</button>
+                        </form>
+                        {% else %}
+                        <span style="color:green;font-weight:bold;">✓ Done</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if (row.donation_status or 'Pending') != 'Completed' %}
+                        <form method="POST" action="{{ url_for('admin.reschedule_donor', donor_id=row.id) }}" style="display:flex;gap:6px;align-items:center;">
+                            <input type="date" name="scheduled_donation_at" value="{% if row.scheduled_donation_at %}{{ row.scheduled_donation_at.strftime('%Y-%m-%d') }}{% endif %}" required style="padding:6px;">
+                            <button class="btn btn-sm btn-outline" type="submit">Reschedule</button>
+                        </form>
+                        {% else %}
+                        <span style="color:green;font-weight:bold;">✓ Done</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="13" style="text-align:center;padding:20px;">No approved donor history yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section id="hospital-section" class="section-card request-section hidden">
+    <h3>Hospital Requests</h3>
+    <table class="table">
+        <thead>
+            <tr><th>ID</th><th>Name</th><th>Details</th><th>Approve</th><th>Reject</th></tr>
+        </thead>
+        <tbody>
+            {% for row in hospitals %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.name or 'N/A' }}</td>
+                <td>{{ row.email }} | {{ row.address or 'N/A' }} | {{ row.phone or 'N/A' }}</td>
+                <td><a class="btn btn-sm" href="{{ url_for('admin.approve_entity', entity='hospital', entity_id=row.id) }}">Approve</a></td>
+                <td><a class="btn btn-sm btn-outline" href="{{ url_for('admin.reject_entity', entity='hospital', entity_id=row.id) }}">Reject</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">No pending hospital requests.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3 style="margin-top:18px;">Pending Blood Requests</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Hospital</th>
+                <th>Patient</th>
+                <th>Blood Group</th>
+                <th>Units</th>
+                <th>Emergency</th>
+                <th>Approve</th>
+                <th>Reject</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in blood_requests %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.hospital_name }}</td>
+                <td>{{ row.patient_name }}</td>
+                <td>{{ row.blood_group }}</td>
+                <td>{{ row.units_required }} ({{ row.required_ml }}ml)</td>
+                <td>{% if row.emergency %}Yes{% else %}No{% endif %}</td>
+                <td><a class="btn btn-sm" href="{{ url_for('admin.approve_blood_request', request_id=row.id) }}">Approve</a></td>
+                <td><a class="btn btn-sm btn-outline" href="{{ url_for('admin.reject_blood_request', request_id=row.id) }}">Reject</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8">No pending blood requests.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3 style="margin-top:18px;">Pending Transfer Requests</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Hospital</th>
+                <th>Patient</th>
+                <th>Blood Group</th>
+                <th>Units</th>
+                <th>Status</th>
+                <th>Transfer</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in transfer_requests %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.hospital_name }}</td>
+                <td>{{ row.patient_name }}</td>
+                <td>{{ row.blood_group }}</td>
+                <td>{{ row.units_required }} ({{ row.required_ml }}ml)</td>
+                <td>{{ row.status }}</td>
+                <td>
+                    <form method="POST" action="{{ url_for('admin.transfer_blood_request', request_id=row.id) }}">
+                        <button class="btn btn-sm" type="submit">Transfer</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7">No pending transfer requests.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3 style="margin-top:18px;">Transferred Blood Records</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Hospital</th>
+                <th>Patient</th>
+                <th>Blood Group</th>
+                <th>Requested Units</th>
+                <th>Transferred Units</th>
+                <th>Transferred At</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in transferred_requests %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.hospital_name }}</td>
+                <td>{{ row.patient_name }}</td>
+                <td>{{ row.blood_group }}</td>
+                <td>{{ row.units_required }} ({{ row.required_ml }}ml)</td>
+                <td>{{ row.transferred_units or row.units_required }}</td>
+                <td>{% if row.transferred_at %}{{ row.transferred_at }}{% else %}N/A{% endif %}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7">No transferred blood records yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3 style="margin-top:18px;">System Activity Log</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Action</th>
+                <th>Entity Type</th>
+                <th>Details</th>
+                <th>Timestamp</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in admin_logs %}
+            <tr>
+                <td>{{ log.action }}</td>
+                <td>{{ log.entity_type }}</td>
+                <td>{{ log.details or '—' }}</td>
+                <td>{{ log.created_at }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4">No activity logs yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section id="camp-section" class="section-card request-section hidden">
+    <h3>Blood Camp Requests</h3>
+    <table class="table">
+        <thead>
+            <tr><th>ID</th><th>Name</th><th>Details</th><th>Approve</th><th>Reject</th></tr>
+        </thead>
+        <tbody>
+            {% for row in camps %}
+            <tr>
+                <td>{{ row.id }}</td>
+                <td>{{ row.camp_name or 'N/A' }}</td>
+                <td>{{ row.email }} | {{ row.location or 'N/A' }} | {{ row.days or 'N/A' }} days</td>
+                <td><a class="btn btn-sm" href="{{ url_for('admin.approve_entity', entity='camp', entity_id=row.id) }}">Approve</a></td>
+                <td><a class="btn btn-sm btn-outline" href="{{ url_for('admin.reject_entity', entity='camp', entity_id=row.id) }}">Reject</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="5">No pending camp requests.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Blood Group Distribution</h3>
+    <canvas id="bloodChart" height="110"></canvas>
+</section>
+
+<section class="section-card">
+    <h3>Units Collected Per Month</h3>
+    <canvas id="monthlyUnitsChart" height="110"></canvas>
+</section>
+
+<section class="section-card">
+    <h3>Inventory Blood Group Distribution</h3>
+    <canvas id="inventoryChart" height="110"></canvas>
+</section>
+
+<section class="section-card">
+    <h3>Emergency vs Normal Requests</h3>
+    <canvas id="emergencySplitChart" height="110"></canvas>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/admin_toggle.js') }}"></script>
+<script id="blood-labels" type="application/json">{{ blood_distribution | map(attribute='blood_group') | list | tojson }}</script>
+<script id="blood-values" type="application/json">{{ blood_distribution | map(attribute='total') | list | tojson }}</script>
+<script id="monthly-unit-labels" type="application/json">{{ monthly_units | map(attribute='period') | list | tojson }}</script>
+<script id="monthly-unit-values" type="application/json">{{ monthly_units | map(attribute='total_units') | list | tojson }}</script>
+<script id="inventory-labels" type="application/json">{{ inventory_distribution | map(attribute='blood_group') | list | tojson }}</script>
+<script id="inventory-values" type="application/json">{{ inventory_distribution | map(attribute='total') | list | tojson }}</script>
+<script id="emergency-values" type="application/json">{{ [emergency_split.emergency_total or 0, emergency_split.normal_total or 0] | tojson }}</script>
+<script>
+    const bloodLabels = JSON.parse(document.getElementById('blood-labels').textContent || '[]');
+    const bloodValues = JSON.parse(document.getElementById('blood-values').textContent || '[]');
+    const monthlyUnitLabels = JSON.parse(document.getElementById('monthly-unit-labels').textContent || '[]');
+    const monthlyUnitValues = JSON.parse(document.getElementById('monthly-unit-values').textContent || '[]');
+    const inventoryLabels = JSON.parse(document.getElementById('inventory-labels').textContent || '[]');
+    const inventoryValues = JSON.parse(document.getElementById('inventory-values').textContent || '[]');
+    const emergencyValues = JSON.parse(document.getElementById('emergency-values').textContent || '[0,0]');
+
+    const chartContext = document.getElementById('bloodChart');
+    if (chartContext) {
+        new Chart(chartContext, {
+            type: 'bar',
+            data: {
+                labels: bloodLabels,
+                datasets: [{
+                    label: 'Donors',
+                    data: bloodValues,
+                    backgroundColor: '#d62839',
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    const monthlyContext = document.getElementById('monthlyUnitsChart');
+    if (monthlyContext) {
+        new Chart(monthlyContext, {
+            type: 'line',
+            data: {
+                labels: monthlyUnitLabels,
+                datasets: [{
+                    label: 'Units Collected',
+                    data: monthlyUnitValues,
+                    borderColor: '#a4161a',
+                    backgroundColor: 'rgba(214, 40, 57, 0.2)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: true } }
+            }
+        });
+    }
+
+    const inventoryContext = document.getElementById('inventoryChart');
+    if (inventoryContext) {
+        new Chart(inventoryContext, {
+            type: 'bar',
+            data: {
+                labels: inventoryLabels,
+                datasets: [{
+                    label: 'Inventory Units',
+                    data: inventoryValues,
+                    backgroundColor: '#ef476f',
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    const emergencyContext = document.getElementById('emergencySplitChart');
+    if (emergencyContext) {
+        new Chart(emergencyContext, {
+            type: 'doughnut',
+            data: {
+                labels: ['Emergency', 'Normal'],
+                datasets: [{
+                    data: emergencyValues,
+                    backgroundColor: ['#d62839', '#f3d3d7']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    }
+</script>
+{% endblock %}

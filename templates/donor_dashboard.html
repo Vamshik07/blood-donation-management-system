@@ -1,0 +1,269 @@
+{% extends 'base.html' %}
+{% block title %}Donor Dashboard{% endblock %}
+
+{% block content %}
+<section class="section-card">
+    <h2>Donor Dashboard</h2>
+    <p>Complete profile for admin approval. Age eligibility: 18–60 only.</p>
+
+    <form method="POST" class="form-grid">
+        <input type="hidden" name="action" value="update_profile">
+        <label>Full Name<input type="text" name="name" value="{{ donor.name or '' }}" required></label>
+        <label>Age (18–60)<input type="number" min="18" max="60" name="age" value="{{ donor.age or '' }}" required></label>
+
+        <label>Blood Group
+            <select name="blood_group">
+                <option value="">Select</option>
+                {% for bg in ['A+','A-','B+','B-','AB+','AB-','O+','O-'] %}
+                <option value="{{ bg }}" {% if donor.blood_group == bg %}selected{% endif %}>{{ bg }}</option>
+                {% endfor %}
+                <option value="UNKNOWN" {% if donor.blood_group == 'UNKNOWN' or not donor.blood_group %}selected{% endif %}>I don't know (Test at donation)</option>
+            </select>
+            <small style="display:block;margin-top:4px;color:#666;font-size:13px;">Not sure about your blood group? Don't worry. It will be tested during your first donation.</small>
+        </label>
+
+        <label>Address<input type="text" name="address" value="{{ donor.address or '' }}" required></label>
+        <label>Phone<input type="text" name="phone" value="{{ donor.phone or '' }}" required></label>
+        <label class="check">
+            <input type="checkbox" id="first_time_donor" name="first_time_donor" {% if not donor.last_donation %}checked{% endif %}>
+            I am a first-time donor
+        </label>
+
+        <label id="last-donation-wrap">Last Donation Date<input type="date" id="last_donation" name="last_donation" value="{{ donor.last_donation or '' }}"></label>
+
+        <label class="check">
+            <input type="checkbox" name="fit_confirmation" {% if donor.fit_confirmation %}checked{% endif %}>
+            I confirm I am medically fit
+        </label>
+
+        <button class="btn btn-primary" type="submit">Submit for Approval</button>
+    </form>
+
+    {% set profile_complete = donor.name and donor.age %}
+    {% if profile_complete %}
+    <div class="status-pill {% if donor.approved %}approved{% else %}pending{% endif %}">
+        Status: {% if donor.approved %}Approved{% else %}Pending Admin Approval{% endif %}
+    </div>
+    
+    <!-- Blood group verification status -->
+    {% if donor.blood_group and donor.blood_group != 'UNKNOWN' %}
+        {% if donor.blood_group_verified %}
+        <div class="status-pill approved" style="margin-top:10px;">
+            ✓ Blood Group Verified: {{ donor.blood_group }}
+        </div>
+        {% else %}
+        <div class="status-pill pending" style="margin-top:10px;">
+            ⚠ Blood Group Pending Verification: {{ donor.blood_group }} (Self-reported)
+        </div>
+        {% endif %}
+    {% elif donor.blood_group == 'UNKNOWN' %}
+    <div class="status-pill" style="margin-top:10px;background:#fff3cd;color:#856404;border-color:#ffc107;">
+        ℹ Blood Group: Will be tested at first donation
+    </div>
+    {% endif %}
+    
+    {% else %}
+    <div class="status-pill" style="background:#f0f0f0;color:#666;border-color:#ddd;">
+        Status: Profile Incomplete - Fill in details above and submit
+    </div>
+    {% endif %}
+</section>
+
+<section class="section-card">
+    <h3>Upcoming Blood Camps</h3>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Camp</th>
+                    <th>Required Groups</th>
+                    <th>Target Units</th>
+                    <th>Preferred Slot</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for event in upcoming_camps %}
+                <tr>
+                    <td>{{ event.event_name }}</td>
+                    <td>{{ event.event_date }}</td>
+                    <td>
+                        {{ event.location }}
+                        {% if event.nearby_score %}
+                        <div style="font-size:0.85rem;color:green;font-weight:700;">Nearby</div>
+                        {% endif %}
+                    </td>
+                    <td>{{ event.camp_name }}{% if event.contact_info or event.camp_phone %}<div style="font-size:0.85rem;">{{ event.contact_info or event.camp_phone }}</div>{% endif %}</td>
+                    <td>{{ event.required_groups or 'All groups' }}</td>
+                    <td>{{ event.target_units }}</td>
+                    <td>
+                        {% if not event.already_registered %}
+                        <form id="register-event-{{ event.id }}" method="POST" action="{{ url_for('donor.register_for_camp_event', event_id=event.id) }}">
+                            <select name="preferred_slot" required>
+                                <option value="">Select Slot</option>
+                                {% for slot in time_slot_options %}
+                                <option value="{{ slot }}">{{ slot }}</option>
+                                {% endfor %}
+                            </select>
+                        </form>
+                        {% else %}
+                        <span style="font-weight:700;color:green;">Registered</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if not event.already_registered %}
+                        <button class="btn btn-sm" type="submit" form="register-event-{{ event.id }}">Register</button>
+                        {% else %}
+                        <span style="font-size:0.9rem;">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" style="text-align:center;padding:20px;">No upcoming camps available.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>My Camp Registrations</h3>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th>Event</th>
+                    <th>Date</th>
+                    <th>Location</th>
+                    <th>Preferred Slot</th>
+                    <th>Status</th>
+                    <th>Units Collected</th>
+                    <th>Donated At</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in camp_registrations %}
+                <tr>
+                    <td>{{ row.event_name }}</td>
+                    <td>{{ row.event_date }}</td>
+                    <td>{{ row.location }}</td>
+                    <td>{{ row.preferred_slot }}</td>
+                    <td>{{ row.registration_status }}</td>
+                    <td>{{ row.units_collected or 0 }}</td>
+                    <td>{{ row.donated_at or 'N/A' }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" style="text-align:center;padding:20px;">No camp registrations yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section-card">
+    <h2 style="color: var(--red-dark); margin-bottom: 20px;">🩸 Donor Eligibility</h2>
+    <p style="font-size: 15px; margin-bottom: 24px;">
+        To ensure the safety of both the donor and the recipient, certain eligibility criteria must be met before donating blood. 
+        Please review the following guidelines carefully:
+    </p>
+
+    <div style="margin-bottom: 28px;">
+        <h3 style="color: var(--red-dark); font-size: 1.3rem; margin-bottom: 12px;">✅ Basic Eligibility Criteria</h3>
+        <ul style="line-height: 1.8; font-size: 14px; font-weight: 500;">
+            <li>Age must be <strong>18 to 65 years</strong></li>
+            <li>Minimum weight should be <strong>50 kg</strong></li>
+            <li>Hemoglobin level must be at least <strong>12.5 g/dL</strong></li>
+            <li>Body temperature should be <strong>normal</strong></li>
+            <li>Pulse rate must be <strong>regular (60–100 beats per minute)</strong></li>
+            <li>Blood pressure should be <strong>within normal range</strong></li>
+        </ul>
+    </div>
+
+    <div style="margin-bottom: 28px;">
+        <h3 style="color: #d97706; font-size: 1.3rem; margin-bottom: 12px;">🚫 Temporary Restrictions</h3>
+        <p style="font-size: 14px; font-weight: 500; margin-bottom: 10px;">You may not be eligible to donate blood if you:</p>
+        <ul style="line-height: 1.8; font-size: 14px; font-weight: 500;">
+            <li>Have fever, cold, or infection in the <strong>past 7 days</strong></li>
+            <li>Have undergone major surgery in the <strong>last 6 months</strong></li>
+            <li>Have recently received vaccination <strong>(within 14–28 days depending on type)</strong></li>
+            <li>Are <strong>pregnant or breastfeeding</strong></li>
+            <li>Have consumed alcohol within the <strong>last 24 hours</strong></li>
+            <li>Got a tattoo or piercing in the <strong>last 6 months</strong></li>
+        </ul>
+    </div>
+
+    <div style="margin-bottom: 28px;">
+        <h3 style="color: #dc2626; font-size: 1.3rem; margin-bottom: 12px;">❌ Permanent Restrictions</h3>
+        <p style="font-size: 14px; font-weight: 500; margin-bottom: 10px;">You are not eligible to donate if you:</p>
+        <ul style="line-height: 1.8; font-size: 14px; font-weight: 500;">
+            <li>Have <strong>HIV/AIDS</strong></li>
+            <li>Have <strong>Hepatitis B or C</strong></li>
+            <li>Have serious <strong>heart disease</strong></li>
+            <li>Have chronic <strong>kidney or liver disease</strong></li>
+            <li>Have <strong>blood clotting disorders</strong></li>
+        </ul>
+    </div>
+
+    <div style="background: #fef3c7; padding: 20px; border-radius: 12px; border-left: 4px solid #f59e0b;">
+        <h3 style="color: #92400e; font-size: 1.3rem; margin-bottom: 12px; margin-top: 0;">❤️ Important Note</h3>
+        <ul style="line-height: 1.8; font-size: 14px; font-weight: 600; color: #78350f; margin-bottom: 0;">
+            <li>A donor can donate whole blood <strong>every 3 months (90 days)</strong>.</li>
+            <li>All donated blood is <strong>tested and handled</strong> following medical safety standards.</li>
+            <li>Your <strong>honest disclosure</strong> ensures the safety of patients in need.</li>
+        </ul>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>Your Activity Log</h3>
+    <table class="table" style="font-size: 0.95rem;">
+        <thead>
+            <tr>
+                <th>Action</th>
+                <th>Type</th>
+                <th>Details</th>
+                <th>When</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if donor_logs %}
+            {% for log in donor_logs %}
+            <tr>
+                <td>{{ log.action }}</td>
+                <td>{{ log.entity_type }}</td>
+                <td>{{ log.details or '—' }}</td>
+                <td style="font-size: 0.9rem;">{{ log.created_at }}</td>
+            </tr>
+            {% endfor %}
+            {% else %}
+            <tr><td colspan="4" style="text-align: center; padding: 20px;">No activity yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</section>
+
+<script>
+(() => {
+    const firstTimeCheckbox = document.getElementById('first_time_donor');
+    const lastDonationWrap = document.getElementById('last-donation-wrap');
+    const lastDonationInput = document.getElementById('last_donation');
+
+    if (!firstTimeCheckbox || !lastDonationWrap || !lastDonationInput) return;
+
+    const syncLastDonationVisibility = () => {
+        const isFirstTime = firstTimeCheckbox.checked;
+        lastDonationWrap.style.display = isFirstTime ? 'none' : '';
+        lastDonationInput.disabled = isFirstTime;
+        if (isFirstTime) {
+            lastDonationInput.value = '';
+        }
+    };
+
+    firstTimeCheckbox.addEventListener('change', syncLastDonationVisibility);
+    syncLastDonationVisibility();
+})();
+</script>
+{% endblock %}

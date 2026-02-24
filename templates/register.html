@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block title %}{{ role|title }} Register{% endblock %}
+
+{% block content %}
+<section class="section-card center-block">
+    <h2>{{ role|title }} Registration</h2>
+
+    {% if google_configured %}
+    <div style="margin-bottom:18px;">
+        <a class="btn" href="{{ url_for('auth.google_login', role=role) }}" style="width:100%;max-width:400px;margin:0 auto;display:block;text-align:center;">
+            <strong>Register with Google</strong>
+        </a>
+    </div>
+
+    <div style="text-align:center;margin:12px 0;color:#999;font-size:14px;">
+        <span>or register with email/password</span>
+    </div>
+    {% endif %}
+
+    <form method="POST" class="form-grid" style="max-width:520px;margin:0 auto;">
+        <label>Email
+            <input type="email" name="email" required>
+        </label>
+        {% if role in ['donor', 'camp'] %}
+        <label>Mobile Number (for SMS updates)
+            <input type="text" name="phone" placeholder="e.g. +919876543210" required>
+        </label>
+        {% endif %}
+        <label>Create Password
+            <input type="password" name="password" required minlength="6">
+        </label>
+        <label>Confirm Password
+            <input type="password" name="confirm_password" required minlength="6">
+        </label>
+        <button class="btn btn-primary" type="submit">Create Account</button>
+    </form>
+
+    <div style="margin-top:12px;">
+        <a href="{{ url_for('auth.login', role=role) }}">Back to {{ role|title }} Login</a>
+    </div>
+</section>
+{% endblock %}

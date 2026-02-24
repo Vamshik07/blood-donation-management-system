@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Discover Roles{% endblock %}
+
+{% block content %}
+<section class="section-card center-block">
+    <h2>Select Portal</h2>
+    <p>Choose your role to open login/register portal.</p>
+</section>
+
+<section class="role-grid">
+    <a class="role-card" href="{{ url_for('auth.login', role='donor') }}">
+        <h3>1️⃣ Donor</h3>
+    </a>
+
+    <a class="role-card" href="{{ url_for('auth.login', role='hospital') }}">
+        <h3>2️⃣ Hospital</h3>
+    </a>
+
+    <a class="role-card" href="{{ url_for('auth.login', role='camp') }}">
+        <h3>3️⃣ Blood Camps</h3>
+    </a>
+</section>
+{% endblock %}
