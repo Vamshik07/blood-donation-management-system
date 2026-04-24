@@ -74,7 +74,7 @@
     <h3>Blood Request Form</h3>
     <p>Rule applied: 1 unit = 450ml. Emergency requests are prioritized.</p>
 
-    <form method="POST" class="form-grid">
+    <form method="POST" class="form-grid" enctype="multipart/form-data">
         <input type="hidden" name="action" value="request">
         <label>Patient Name<input type="text" name="patient_name" required></label>
         <label>Blood Group Required
@@ -86,9 +86,18 @@
             </select>
         </label>
         <label>Units Needed<input type="number" min="1" name="units_required" required></label>
-        <label>Hospital Address<input type="text" name="hospital_address" required></label>
+        <label>Hospital Name<input type="text" name="hospital_name" value="{{ hospital.name or '' }}" required></label>
+        <label>Hospital Location<input type="text" name="hospital_location" value="{{ hospital.address or '' }}" required></label>
         <label>Contact Number<input type="text" name="contact_number" required></label>
-        <label class="check"><input type="checkbox" name="emergency"> Emergency / Normal Toggle</label>
+        <label>Emergency Level
+            <select name="emergency_level" required>
+                <option value="Normal">Normal</option>
+                <option value="Urgent">Urgent</option>
+            </select>
+        </label>
+        <label>Relationship with Patient<input type="text" name="relationship_with_patient" required></label>
+        <label>Medical Proof (PDF/JPG/PNG)<input type="file" name="medical_proof" accept=".pdf,.jpg,.jpeg,.png" required></label>
+        <label>Additional Notes<textarea name="additional_notes" rows="3" placeholder="Optional details"></textarea></label>
         <button class="btn btn-primary" type="submit">Submit Request to Admin</button>
     </form>
 </section>
@@ -121,7 +130,7 @@
 <section class="section-card">
     <h3>Matched Donors (Latest Request)</h3>
     <table class="table">
-        <thead><tr><th>ID</th><th>Name</th><th>Blood Group</th><th>Address</th><th>Phone</th><th>Last Donation</th><th>Match Score</th></tr></thead>
+        <thead><tr><th>ID</th><th>Name</th><th>Blood Group</th><th>Address</th><th>Phone</th><th>Last Donation</th><th>Response Rate</th><th>Match Score</th></tr></thead>
         <tbody>
         {% for row in donor_matches %}
             <tr>
@@ -131,11 +140,71 @@
                 <td>{{ row[3] }}</td>
                 <td>{{ row[4] }}</td>
                 <td>{{ row[5] or 'N/A' }}</td>
-                <td><strong>{{ row[6] }}</strong></td>
+                <td>{{ (row[6] * 100)|round(0) }}%</td>
+                <td><strong>{{ row[7] }}</strong></td>
             </tr>
         {% else %}
-            <tr><td colspan="7">No matching approved donors yet.</td></tr>
+            <tr><td colspan="8">No matching approved donors yet.</td></tr>
         {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Live Emergency Monitor</h3>
+    <p>Auto-refreshes every 15 seconds for urgent requests and accepted donor responses.</p>
+    <table class="table" id="emergency-live-table">
+        <thead>
+            <tr>
+                <th>Request</th>
+                <th>Patient</th>
+                <th>Group</th>
+                <th>Accepted / Units</th>
+                <th>Priority</th>
+                <th>Last Response</th>
+                <th>Accepted Donors</th>
+            </tr>
+        </thead>
+        <tbody id="emergency-live-body">
+            <tr><td colspan="7">Loading emergency updates...</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Donor Map Data Explorer</h3>
+    <p>API-backed nearby donor/hospital data feed for blood-group and location filters.</p>
+    <form id="donor-map-form" class="form-grid" style="margin-bottom: 14px;">
+        <label>Blood Group
+            <select name="blood_group" required>
+                <option value="">Select</option>
+                {% for bg in ['A+','A-','B+','B-','AB+','AB-','O+','O-'] %}
+                <option value="{{ bg }}">{{ bg }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Location
+            <input type="text" name="location" value="{{ hospital.address or '' }}" placeholder="City / Area">
+        </label>
+        <label>Units Needed
+            <input type="number" name="units_required" min="1" max="25" value="5">
+        </label>
+        <button class="btn btn-primary" type="submit">Load Map Data</button>
+    </form>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Donor</th>
+                <th>Group</th>
+                <th>Area</th>
+                <th>Phone</th>
+                <th>Response Rate</th>
+                <th>Match Score</th>
+            </tr>
+        </thead>
+        <tbody id="donor-map-body">
+            <tr><td colspan="6">Select filters to load donor map data.</td></tr>
         </tbody>
     </table>
 </section>
@@ -264,4 +333,89 @@
         </tbody>
     </table>
 </section>
+
+<script>
+(() => {
+    const emergencyBody = document.getElementById('emergency-live-body');
+    const donorMapForm = document.getElementById('donor-map-form');
+    const donorMapBody = document.getElementById('donor-map-body');
+
+    const renderEmergencyRows = (requests) => {
+        if (!requests || !requests.length) {
+            emergencyBody.innerHTML = '<tr><td colspan="7">No active urgent requests.</td></tr>';
+            return;
+        }
+
+        emergencyBody.innerHTML = requests.map((row) => {
+            const donorContacts = (row.accepted_donors || [])
+                .map((d) => `${d.name || 'Donor'} (${d.phone || 'N/A'})`)
+                .join(', ') || 'No accepted donors yet';
+
+            return `
+                <tr>
+                    <td>#${row.request_id}</td>
+                    <td>${row.patient_name || 'N/A'}</td>
+                    <td>${row.blood_group || 'N/A'}</td>
+                    <td>${row.accepted_count || 0} / ${row.units_required || 0}</td>
+                    <td><strong>${row.ai_priority_score || 0}</strong></td>
+                    <td>${row.last_response_at || '-'}</td>
+                    <td>${donorContacts}</td>
+                </tr>
+            `;
+        }).join('');
+    };
+
+    const pollEmergency = async () => {
+        try {
+            const response = await fetch("{{ url_for('hospital.emergency_status_api') }}", {
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            if (!response.ok) throw new Error('Failed');
+            const payload = await response.json();
+            renderEmergencyRows(payload.requests || []);
+        } catch (_error) {
+            emergencyBody.innerHTML = '<tr><td colspan="7">Failed to load emergency updates.</td></tr>';
+        }
+    };
+
+    const renderMapRows = (rows) => {
+        if (!rows || !rows.length) {
+            donorMapBody.innerHTML = '<tr><td colspan="6">No matching donors found for these filters.</td></tr>';
+            return;
+        }
+
+        donorMapBody.innerHTML = rows.map((row) => `
+            <tr>
+                <td>${row.name || 'N/A'}</td>
+                <td>${row.blood_group || 'N/A'}</td>
+                <td>${row.address || 'N/A'}</td>
+                <td>${row.phone || 'N/A'}</td>
+                <td>${Math.round((row.response_rate || 0) * 100)}%</td>
+                <td><strong>${row.match_score || 0}</strong></td>
+            </tr>
+        `).join('');
+    };
+
+    donorMapForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const formData = new FormData(donorMapForm);
+        const query = new URLSearchParams(formData).toString();
+        donorMapBody.innerHTML = '<tr><td colspan="6">Loading donor map data...</td></tr>';
+
+        try {
+            const response = await fetch(`{{ url_for('hospital.donor_map_api') }}?${query}`, {
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            if (!response.ok) throw new Error('Failed');
+            const payload = await response.json();
+            renderMapRows(payload.matched_donors || []);
+        } catch (_error) {
+            donorMapBody.innerHTML = '<tr><td colspan="6">Failed to load donor map data.</td></tr>';
+        }
+    });
+
+    pollEmergency();
+    setInterval(pollEmergency, 15000);
+})();
+</script>
 {% endblock %}

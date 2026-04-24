@@ -4,7 +4,7 @@
     {
       "label": "Run Blood Donation App",
       "type": "shell",
-      "command": "powershell",
+      "command": "${env:WINDIR}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
         "-ExecutionPolicy",
         "Bypass",
@@ -24,7 +24,7 @@
     {
       "label": "Install Dependencies Only",
       "type": "shell",
-      "command": "powershell",
+      "command": "${env:WINDIR}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
       "args": [
         "-ExecutionPolicy",
         "Bypass",

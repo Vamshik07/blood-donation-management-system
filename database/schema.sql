@@ -20,6 +20,14 @@ CREATE TABLE IF NOT EXISTS donors (
     address TEXT,
     phone VARCHAR(15),
     last_donation DATE,
+    account_status VARCHAR(30) DEFAULT 'Registered',
+    donor_status VARCHAR(30) DEFAULT 'Registered',
+    account_suspended BOOLEAN DEFAULT FALSE,
+    is_permanently_deferred BOOLEAN DEFAULT FALSE,
+    deferral_reason VARCHAR(255),
+    alcohol_consumed_recently BOOLEAN DEFAULT FALSE,
+    last_alcohol_consumption_datetime DATETIME,
+    temporary_deferral_until DATETIME,
     scheduled_donation_at DATE,
     donation_status VARCHAR(20) DEFAULT 'Pending',
     donation_completed_at DATETIME,
@@ -29,7 +37,7 @@ CREATE TABLE IF NOT EXISTS donors (
     auth_provider VARCHAR(20) DEFAULT 'google',
     health_status BOOLEAN DEFAULT FALSE,
     fit_confirmation BOOLEAN DEFAULT FALSE,
-    approved BOOLEAN DEFAULT FALSE,
+    approved BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -81,6 +89,9 @@ CREATE TABLE IF NOT EXISTS blood_requests (
     admin_approved BOOLEAN DEFAULT FALSE,
     transferred_units INT DEFAULT 0,
     transferred_at DATETIME NULL,
+    ai_priority_score INT DEFAULT 0,
+    fraud_risk_score INT DEFAULT 0,
+    fraud_flags VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
 );
@@ -164,8 +175,11 @@ CREATE TABLE IF NOT EXISTS camp_events (
     event_name VARCHAR(120) NOT NULL,
     location VARCHAR(255) NOT NULL,
     event_date DATE NOT NULL,
+    event_end_date DATE NULL,
     target_units INT NOT NULL,
     contact_info VARCHAR(100),
+    organizer_name VARCHAR(120) NULL,
+    camp_phone VARCHAR(20) NULL,
     status VARCHAR(20) DEFAULT 'Upcoming',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (camp_id) REFERENCES blood_camps(id)

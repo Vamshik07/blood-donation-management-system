@@ -14,17 +14,25 @@
         <label>Number of Days<input type="number" min="1" name="days" value="{{ camp.days or '' }}" required></label>
         <label>Slots per Day<input type="number" min="1" name="slots_per_day" value="{{ camp.slots_per_day or '' }}" required></label>
         <label>Expected Donors Count<input type="number" min="1" name="expected_donors" value="{{ camp.expected_donors or '' }}" required></label>
-        <button class="btn btn-primary" type="submit">Submit Request for Approval</button>
+        <button class="btn btn-primary" type="submit">Save Blood Camp Dashboard</button>
     </form>
 
-    {% set profile_complete = camp.camp_name and camp.city and camp.email %}
-    {% if profile_complete %}
+    {% if camp_profile_complete %}
     <div class="status-pill {% if camp.approved %}approved{% else %}pending{% endif %}">
-        Camp Status: {% if camp.approved %}Approved{% else %}Pending Admin Approval{% endif %}
+        Camp Status:
+        {% if camp.approved %}
+            {% if camp_has_event %}
+                Active
+            {% else %}
+                Active (Complete event details to request approval)
+            {% endif %}
+        {% else %}
+            Pending Admin Approval
+        {% endif %}
     </div>
     {% else %}
     <div class="status-pill" style="background:#f0f0f0;color:#666;border-color:#ddd;">
-        Status: Profile Incomplete - Fill in details above and submit
+        Status: Profile Incomplete - Fill in all dashboard details
     </div>
     {% endif %}
 </section>
@@ -44,8 +52,11 @@
     <form method="POST" class="form-grid">
         <input type="hidden" name="action" value="create_event">
         <label>Event Name<input type="text" name="event_name" required></label>
+        <label>Organizer Name<input type="text" name="organizer_name" value="{{ camp.camp_name or '' }}" required></label>
+        <label>Camp Phone<input type="text" name="camp_phone" value="{{ camp.phone or '' }}" required></label>
         <label>Location<input type="text" name="event_location" value="{{ camp.location or '' }}" required></label>
-        <label>Date<input type="date" name="event_date" required></label>
+        <label>Camp Starting Date<input type="date" name="event_start_date" required></label>
+        <label>Camp Ending Date<input type="date" name="event_end_date" required></label>
         <label>Target Units<input type="number" min="1" name="target_units" required></label>
         <label>Contact Info<input type="text" name="event_contact" value="{{ camp.phone or '' }}"></label>
         <label>Required Blood Groups</label>
@@ -60,7 +71,7 @@
         <button class="btn btn-primary" type="submit">Create Event</button>
     </form>
     {% else %}
-    <p>Camp approval is required before creating events.</p>
+    <p>Your camp is pending admin approval. New events can be created after approval.</p>
     {% endif %}
 </section>
 
@@ -71,8 +82,11 @@
             <thead>
                 <tr>
                     <th>Event</th>
-                    <th>Date</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
                     <th>Location</th>
+                    <th>Organizer</th>
+                    <th>Camp Phone</th>
                     <th>Required Groups</th>
                     <th>Target</th>
                     <th>Registered</th>
@@ -87,7 +101,10 @@
                 <tr>
                     <td>{{ event.event_name }}</td>
                     <td>{{ event.event_date }}</td>
+                    <td>{{ event.event_end_date or event.event_date }}</td>
                     <td>{{ event.location }}</td>
+                    <td>{{ event.organizer_name or 'N/A' }}</td>
+                    <td>{{ event.camp_phone or 'N/A' }}</td>
                     <td>{{ event.required_groups or 'N/A' }}</td>
                     <td>{{ event.target_units }}</td>
                     <td>{{ event.total_registered }}</td>
@@ -102,7 +119,7 @@
                     <td><a class="btn btn-sm btn-outline" href="{{ url_for('camp.event_report_csv', event_id=event.id) }}">CSV</a></td>
                 </tr>
                 {% else %}
-                <tr><td colspan="10" style="text-align:center;padding:20px;">No upcoming events.</td></tr>
+                <tr><td colspan="13" style="text-align:center;padding:20px;">No upcoming events.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -181,8 +198,11 @@
             <thead>
                 <tr>
                     <th>Event</th>
-                    <th>Date</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
                     <th>Location</th>
+                    <th>Organizer</th>
+                    <th>Camp Phone</th>
                     <th>Target Units</th>
                     <th>Registered Donors</th>
                     <th>Total Units Collected</th>
@@ -195,7 +215,10 @@
                 <tr>
                     <td>{{ event.event_name }}</td>
                     <td>{{ event.event_date }}</td>
+                    <td>{{ event.event_end_date or event.event_date }}</td>
                     <td>{{ event.location }}</td>
+                    <td>{{ event.organizer_name or 'N/A' }}</td>
+                    <td>{{ event.camp_phone or 'N/A' }}</td>
                     <td>{{ event.target_units }}</td>
                     <td>{{ event.total_registered }}</td>
                     <td>{{ event.units_collected or 0 }}</td>
@@ -203,7 +226,7 @@
                     <td><a class="btn btn-sm btn-outline" href="{{ url_for('camp.event_report_csv', event_id=event.id) }}">CSV</a></td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8" style="text-align:center;padding:20px;">No past events found.</td></tr>
+                <tr><td colspan="10" style="text-align:center;padding:20px;">No past events found.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

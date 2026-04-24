@@ -8,18 +8,6 @@
     <p>Admin email and password must already exist in database.</p>
     {% endif %}
 
-    {% if role != 'admin' and google_configured %}
-    <div style="margin-bottom:18px;">
-        <a class="btn" href="{{ url_for('auth.google_login', role=role) }}" style="width:100%;max-width:400px;margin:0 auto;display:block;text-align:center;">
-            <strong>Continue with Google</strong>
-        </a>
-    </div>
-    
-    <div style="text-align:center;margin:12px 0;color:#999;font-size:14px;">
-        <span>or use email/password</span>
-    </div>
-    {% endif %}
-
     <form method="POST" class="form-grid" style="max-width:520px;margin:0 auto;">
         <label>Email<input type="email" name="email" required></label>
         <label>Password<input type="password" name="password" required></label>

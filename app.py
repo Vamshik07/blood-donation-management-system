@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from flask import Flask, request, session
 
 from config import Config
@@ -77,6 +79,36 @@ def ensure_core_tables():
         if not exists:
             cursor.execute(f"ALTER TABLE {table_name} ADD UNIQUE KEY {index_name} ({columns})")
 
+    def ensure_varchar_column(table_name, column_name, target_length, default_value=None):
+        cursor.execute(
+            """
+            SELECT DATA_TYPE, IFNULL(CHARACTER_MAXIMUM_LENGTH, 0)
+            FROM INFORMATION_SCHEMA.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = %s
+              AND COLUMN_NAME = %s
+            """,
+            (table_name, column_name),
+        )
+        column_meta = cursor.fetchone()
+        if not column_meta:
+            return
+
+        data_type = (column_meta[0] or "").lower()
+        max_length = int(column_meta[1] or 0)
+
+        if data_type == "varchar" and max_length >= target_length:
+            return
+
+        default_clause = ""
+        if default_value is not None:
+            safe_default = str(default_value).replace("'", "''")
+            default_clause = f" DEFAULT '{safe_default}'"
+
+        cursor.execute(
+            f"ALTER TABLE {table_name} MODIFY COLUMN {column_name} VARCHAR({target_length}){default_clause}"
+        )
+
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS admin (
@@ -100,9 +132,17 @@ def ensure_core_tables():
             address TEXT,
             phone VARCHAR(15),
             last_donation DATE,
+            account_status VARCHAR(30) DEFAULT 'Registered',
+            donor_status VARCHAR(30) DEFAULT 'Registered',
+            account_suspended BOOLEAN DEFAULT FALSE,
+            is_permanently_deferred BOOLEAN DEFAULT FALSE,
+            deferral_reason VARCHAR(255) NULL,
+            alcohol_consumed_recently BOOLEAN DEFAULT FALSE,
+            last_alcohol_consumption_datetime DATETIME NULL,
+            temporary_deferral_until DATETIME NULL,
             health_status BOOLEAN DEFAULT FALSE,
             fit_confirmation BOOLEAN DEFAULT FALSE,
-            approved BOOLEAN DEFAULT FALSE,
+            approved BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -117,7 +157,7 @@ def ensure_core_tables():
             password VARCHAR(255),
             address TEXT,
             phone VARCHAR(15),
-            approved BOOLEAN DEFAULT FALSE,
+            approved BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -146,19 +186,63 @@ def ensure_core_tables():
         CREATE TABLE IF NOT EXISTS blood_requests (
             id INT PRIMARY KEY AUTO_INCREMENT,
             hospital_id INT,
+            requester_donor_id INT NULL,
+            requester_role VARCHAR(20) DEFAULT 'hospital',
             patient_name VARCHAR(100),
             blood_group VARCHAR(10),
             units_required INT,
             required_ml INT,
             emergency BOOLEAN,
+            emergency_level VARCHAR(20) DEFAULT 'Normal',
             hospital_address TEXT,
+            hospital_name_snapshot VARCHAR(120) NULL,
+            hospital_location_snapshot VARCHAR(255) NULL,
             contact_number VARCHAR(15),
+            relationship_with_patient VARCHAR(100) NULL,
+            medical_proof_path VARCHAR(255) NULL,
+            additional_notes TEXT NULL,
             status VARCHAR(50) DEFAULT 'Pending',
             admin_approved BOOLEAN DEFAULT FALSE,
             transferred_units INT DEFAULT 0,
             transferred_at DATETIME NULL,
+            ai_priority_score INT DEFAULT 0,
+            fraud_risk_score INT DEFAULT 0,
+            fraud_flags VARCHAR(255) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (hospital_id) REFERENCES hospitals(id)
+            FOREIGN KEY (hospital_id) REFERENCES hospitals(id),
+            FOREIGN KEY (requester_donor_id) REFERENCES donors(id)
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS donor_responses (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            request_id INT NOT NULL,
+            donor_id INT NOT NULL,
+            response_status VARCHAR(20) NOT NULL,
+            response_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_request_donor_response (request_id, donor_id),
+            FOREIGN KEY (request_id) REFERENCES blood_requests(id) ON DELETE CASCADE,
+            FOREIGN KEY (donor_id) REFERENCES donors(id) ON DELETE CASCADE
+        )
+        """
+    )
+
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            user_id INT NOT NULL,
+            user_role VARCHAR(20) NOT NULL,
+            message VARCHAR(500) NOT NULL,
+            type VARCHAR(40) DEFAULT 'info',
+            related_request_id INT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_notifications_target (user_role, user_id, created_at),
+            FOREIGN KEY (related_request_id) REFERENCES blood_requests(id) ON DELETE SET NULL
         )
         """
     )
@@ -171,8 +255,11 @@ def ensure_core_tables():
             event_name VARCHAR(120) NOT NULL,
             location VARCHAR(255) NOT NULL,
             event_date DATE NOT NULL,
+            event_end_date DATE NULL,
             target_units INT NOT NULL,
             contact_info VARCHAR(100),
+            organizer_name VARCHAR(120) NULL,
+            camp_phone VARCHAR(20) NULL,
             status VARCHAR(20) DEFAULT 'Upcoming',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (camp_id) REFERENCES blood_camps(id)
@@ -256,6 +343,15 @@ def ensure_core_tables():
     ensure_column("donors", "email_verified", "BOOLEAN DEFAULT FALSE")
     ensure_column("donors", "auth_provider", "VARCHAR(20) DEFAULT 'google'")
     ensure_column("donors", "blood_group_verified", "BOOLEAN DEFAULT FALSE")
+    ensure_column("donors", "gender", "VARCHAR(20) NULL")
+    ensure_column("donors", "account_status", "VARCHAR(30) DEFAULT 'Registered'")
+    ensure_column("donors", "donor_status", "VARCHAR(30) DEFAULT 'Registered'")
+    ensure_column("donors", "account_suspended", "BOOLEAN DEFAULT FALSE")
+    ensure_column("donors", "is_permanently_deferred", "BOOLEAN DEFAULT FALSE")
+    ensure_column("donors", "deferral_reason", "VARCHAR(255) NULL")
+    ensure_column("donors", "alcohol_consumed_recently", "BOOLEAN DEFAULT FALSE")
+    ensure_column("donors", "last_alcohol_consumption_datetime", "DATETIME NULL")
+    ensure_column("donors", "temporary_deferral_until", "DATETIME NULL")
     ensure_unique_index("donors", "uq_donors_google_sub", "google_sub")
 
     ensure_column("hospitals", "google_sub", "VARCHAR(100) NULL")
@@ -274,21 +370,57 @@ def ensure_core_tables():
     ensure_column("blood_requests", "units_required", "INT NULL")
     ensure_column("blood_requests", "required_ml", "INT NULL")
     ensure_column("blood_requests", "emergency", "BOOLEAN DEFAULT FALSE")
+    ensure_column("blood_requests", "requester_donor_id", "INT NULL")
+    ensure_column("blood_requests", "requester_role", "VARCHAR(20) DEFAULT 'hospital'")
+    ensure_column("blood_requests", "emergency_level", "VARCHAR(20) DEFAULT 'Normal'")
     ensure_column("blood_requests", "hospital_address", "TEXT NULL")
+    ensure_column("blood_requests", "hospital_name_snapshot", "VARCHAR(120) NULL")
+    ensure_column("blood_requests", "hospital_location_snapshot", "VARCHAR(255) NULL")
     ensure_column("blood_requests", "contact_number", "VARCHAR(15) NULL")
+    ensure_column("blood_requests", "relationship_with_patient", "VARCHAR(100) NULL")
+    ensure_column("blood_requests", "medical_proof_path", "VARCHAR(255) NULL")
+    ensure_column("blood_requests", "additional_notes", "TEXT NULL")
     ensure_column("blood_requests", "status", "VARCHAR(50) DEFAULT 'Pending'")
     ensure_column("blood_requests", "admin_approved", "BOOLEAN DEFAULT FALSE")
     ensure_column("blood_requests", "transferred_units", "INT DEFAULT 0")
     ensure_column("blood_requests", "transferred_at", "DATETIME NULL")
+    ensure_column("blood_requests", "ai_priority_score", "INT DEFAULT 0")
+    ensure_column("blood_requests", "fraud_risk_score", "INT DEFAULT 0")
+    ensure_column("blood_requests", "fraud_flags", "VARCHAR(255) NULL")
     ensure_column("blood_requests", "created_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     ensure_column("blood_requests", "allocation_details", "TEXT NULL")
+    ensure_varchar_column("blood_requests", "status", 50, "Pending")
 
     ensure_column("camp_events", "status", "VARCHAR(20) DEFAULT 'Upcoming'")
     ensure_column("camp_events", "contact_info", "VARCHAR(100) NULL")
+    ensure_column("camp_events", "event_end_date", "DATE NULL")
+    ensure_column("camp_events", "organizer_name", "VARCHAR(120) NULL")
+    ensure_column("camp_events", "camp_phone", "VARCHAR(20) NULL")
 
     ensure_column("camp_event_registrations", "registration_status", "VARCHAR(20) DEFAULT 'Registered'")
     ensure_column("camp_event_registrations", "units_collected", "INT DEFAULT 0")
     ensure_column("camp_event_registrations", "donated_at", "DATETIME NULL")
+
+    # Admin Camp Donations table for donors to select & reselect donation dates
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS admin_camp_donations (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            donor_id INT NOT NULL,
+            selected_donation_date DATE NOT NULL,
+            status VARCHAR(50) DEFAULT 'Pending' COMMENT 'Pending|Donated|Missed|Canceled',
+            donated_at DATETIME NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (donor_id) REFERENCES donors(id) ON DELETE CASCADE,
+            INDEX idx_donor_status (donor_id, status),
+            INDEX idx_date_status (selected_donation_date, status)
+        )
+        """
+    )
+
+    ensure_column("donors", "admin_camp_scheduled_date", "DATE NULL")
+    ensure_column("donors", "admin_camp_donation_status", "VARCHAR(50) DEFAULT 'None' COMMENT 'None|Pending|Donated|Missed'")
 
     cursor.execute(
         """
@@ -322,6 +454,22 @@ def ensure_core_tables():
 
     cursor.execute(
         """
+        CREATE TABLE IF NOT EXISTS donor_deferral_events (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            donor_id INT NOT NULL,
+            reason VARCHAR(120) NOT NULL,
+            consumed_at DATETIME NULL,
+            deferral_until DATETIME NULL,
+            source VARCHAR(40) DEFAULT 'profile_update',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (donor_id) REFERENCES donors(id) ON DELETE CASCADE,
+            INDEX idx_deferral_donor_created (donor_id, created_at)
+        )
+        """
+    )
+
+    cursor.execute(
+        """
         CREATE TABLE IF NOT EXISTS blood_stock (
             id INT PRIMARY KEY AUTO_INCREMENT,
             blood_group VARCHAR(10) UNIQUE NOT NULL,
@@ -340,6 +488,43 @@ def ensure_core_tables():
                 "INSERT INTO blood_stock (blood_group, units_available) VALUES (%s, 0)",
                 (bg,)
             )
+
+    # Normalize legacy rows where status became blank/null due to older enum-like schemas.
+    cursor.execute(
+        """
+        UPDATE blood_requests
+        SET status = CASE
+            WHEN COALESCE(admin_approved, FALSE) THEN 'Pending Transfer'
+            ELSE 'Pending'
+        END
+        WHERE status IS NULL OR TRIM(status) = ''
+        """
+    )
+
+    cursor.execute(
+        """
+        UPDATE donors
+        SET account_status = CASE
+            WHEN name IS NULL OR TRIM(name) = '' OR age IS NULL OR address IS NULL OR TRIM(address) = '' THEN 'Registered'
+            ELSE 'ProfileCompleted'
+        END
+        WHERE account_status IS NULL OR TRIM(account_status) = ''
+        """
+    )
+
+    cursor.execute(
+        """
+        UPDATE donors
+        SET donor_status = CASE
+            WHEN COALESCE(is_permanently_deferred, FALSE) = TRUE THEN 'Permanently Deferred'
+            WHEN temporary_deferral_until IS NOT NULL AND temporary_deferral_until > NOW() THEN 'Temporarily Deferred'
+            WHEN account_status = 'Registered' THEN 'Registered'
+            WHEN COALESCE(blood_group_verified, FALSE) = TRUE THEN 'Medically Cleared'
+            ELSE 'Pre-Eligible'
+        END
+        WHERE donor_status IS NULL OR TRIM(donor_status) = ''
+        """
+    )
 
     mysql.connection.commit()
     cursor.close()
@@ -387,21 +572,66 @@ def create_app():
     @app.before_request
     def sync_auth_session_state():
         payload = decode_session_token()
+
         if payload:
             session["active_role"] = payload.get("role")
             session["active_uid"] = payload.get("uid") or payload.get("sub")
             session["active_email"] = payload.get("email")
-            session.permanent = True
-            return
 
-        fallback_role = session.get("active_role")
-        fallback_uid = session.get("active_uid")
-        fallback_email = session.get("active_email")
-        if fallback_role and fallback_uid and fallback_email:
             from models.models import create_session_token
 
-            session["jwt_token"] = create_session_token(fallback_uid, fallback_role, fallback_email)
+            # Rotate token on each authenticated request to keep active sessions stable.
+            session["jwt_token"] = create_session_token(
+                session.get("active_uid"),
+                session.get("active_role"),
+                session.get("active_email"),
+            )
+        else:
+            # Try to restore from fallback session variables
+            fallback_role = session.get("active_role")
+            fallback_uid = session.get("active_uid")
+            fallback_email = session.get("active_email")
+            if fallback_role and fallback_uid and fallback_email:
+                from models.models import create_session_token
+                # Create a new token to extend the session lifetime
+                session["jwt_token"] = create_session_token(fallback_uid, fallback_role, fallback_email)
+                payload = {
+                    "role": fallback_role,
+                    "uid": fallback_uid,
+                    "sub": str(fallback_uid),
+                    "email": fallback_email,
+                }
+
+        # Always mark session as permanent if user is authenticated
+        if payload or session.get("active_role"):
             session.permanent = True
+
+    @app.after_request
+    def sync_auth_cookie(response):
+        auth_cookie_name = app.config.get("AUTH_COOKIE_NAME", "auth_token")
+        session_token = session.get("jwt_token")
+        secure_cookie = bool(app.config.get("SESSION_COOKIE_SECURE")) and request.is_secure
+        max_age_seconds = int(app.config.get("PERMANENT_SESSION_LIFETIME", timedelta(hours=8)).total_seconds())
+
+        if session_token:
+            response.set_cookie(
+                auth_cookie_name,
+                session_token,
+                max_age=max_age_seconds,
+                httponly=True,
+                samesite=app.config.get("SESSION_COOKIE_SAMESITE", "Lax"),
+                secure=secure_cookie,
+                path="/",
+            )
+        else:
+            response.delete_cookie(
+                auth_cookie_name,
+                path="/",
+                samesite=app.config.get("SESSION_COOKIE_SAMESITE", "Lax"),
+                secure=secure_cookie,
+            )
+
+        return response
 
     @app.after_request
     def disable_dashboard_caching(response):

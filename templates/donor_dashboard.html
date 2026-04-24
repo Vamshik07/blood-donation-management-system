@@ -4,12 +4,22 @@
 {% block content %}
 <section class="section-card">
     <h2>Donor Dashboard</h2>
-    <p>Complete profile for admin approval. Age eligibility: 18–60 only.</p>
+    <p>Complete your donor profile. Age eligibility: 18–60 only.</p>
 
     <form method="POST" class="form-grid">
         <input type="hidden" name="action" value="update_profile">
         <label>Full Name<input type="text" name="name" value="{{ donor.name or '' }}" required></label>
         <label>Age (18–60)<input type="number" min="18" max="60" name="age" value="{{ donor.age or '' }}" required></label>
+
+        <label>Gender
+            <select name="gender" required>
+                <option value="">Select</option>
+                <option value="Male" {% if donor.gender == 'Male' %}selected{% endif %}>Male</option>
+                <option value="Female" {% if donor.gender == 'Female' %}selected{% endif %}>Female</option>
+                <option value="Other" {% if donor.gender == 'Other' %}selected{% endif %}>Other</option>
+            </select>
+            <small style="display:block;margin-top:4px;color:#666;font-size:13px;">Gender affects minimum donation gap (Male: 90 days, Female: 120 days).</small>
+        </label>
 
         <label>Blood Group
             <select name="blood_group">
@@ -31,19 +41,54 @@
 
         <label id="last-donation-wrap">Last Donation Date<input type="date" id="last_donation" name="last_donation" value="{{ donor.last_donation or '' }}"></label>
 
+        <label>Have you consumed alcohol in the last 24 hours?
+            <select id="alcohol_consumed_recently" name="alcohol_consumed_recently" required>
+                <option value="no" {% if not donor.alcohol_consumed_recently %}selected{% endif %}>No</option>
+                <option value="yes" {% if donor.alcohol_consumed_recently %}selected{% endif %}>Yes</option>
+            </select>
+        </label>
+
+        <label id="last-alcohol-wrap" {% if not donor.alcohol_consumed_recently %}style="display:none;"{% endif %}>
+            Last Alcohol Consumption (Date & Time)
+            <input
+                type="datetime-local"
+                id="last_alcohol_consumption_datetime"
+                name="last_alcohol_consumption_datetime"
+                value="{% if donor.last_alcohol_consumption_datetime %}{{ donor.last_alcohol_consumption_datetime.strftime('%Y-%m-%dT%H:%M') }}{% endif %}"
+            >
+        </label>
+
+        <label class="check">
+            <input type="checkbox" name="health_status" {% if donor.health_status %}checked{% endif %}>
+            I confirm I pass the health eligibility checklist
+        </label>
+
         <label class="check">
             <input type="checkbox" name="fit_confirmation" {% if donor.fit_confirmation %}checked{% endif %}>
             I confirm I am medically fit
         </label>
 
-        <button class="btn btn-primary" type="submit">Submit for Approval</button>
+        <button class="btn btn-primary" type="submit">Save Profile</button>
     </form>
 
     {% set profile_complete = donor.name and donor.age %}
     {% if profile_complete %}
-    <div class="status-pill {% if donor.approved %}approved{% else %}pending{% endif %}">
-        Status: {% if donor.approved %}Approved{% else %}Pending Admin Approval{% endif %}
+    <div class="status-pill {% if donor_access_state.status in ['Temporarily Deferred','Permanently Deferred'] %}pending{% else %}approved{% endif %}">
+        Status: {{ donor_access_state.status }}
     </div>
+
+    {% if donor_access_state.deferral_reason %}
+    <div class="status-pill" style="margin-top:10px;background:#fff3cd;color:#856404;border-color:#ffc107;">
+        Deferral Reason: {{ donor_access_state.deferral_reason }}
+    </div>
+    {% endif %}
+
+    {% if donor_access_state.status == 'Temporarily Deferred' and donor_access_state.temporary_deferral_until %}
+    <div class="status-pill pending" style="margin-top:10px;background:#fce4ec;border-color:#f06292;">
+        Eligible after: {{ donor_access_state.temporary_deferral_until.strftime('%B %d, %Y %I:%M %p') }} UTC
+        <div id="deferral-countdown" data-deferral-until="{{ donor_access_state.temporary_deferral_until.strftime('%Y-%m-%dT%H:%M:%S') }}Z" style="margin-top:4px;font-weight:600;"></div>
+    </div>
+    {% endif %}
     
     <!-- Blood group verification status -->
     {% if donor.blood_group and donor.blood_group != 'UNKNOWN' %}
@@ -62,11 +107,235 @@
     </div>
     {% endif %}
     
+    <!-- Next Eligible Donation Date -->
+    {% if next_eligible_date %}
+    <div class="status-pill pending" style="margin-top:10px;background:#fce4ec;border-color:#f06292;">
+        ⏳ Next Eligible Donation: {{ next_eligible_date.strftime('%B %d, %Y') }}
+    </div>
+    {% elif donor.last_donation %}
+    <div class="status-pill approved" style="margin-top:10px;">
+        ✓ Eligible to donate now
+    </div>
+    {% endif %}
+
+    {% if is_temporarily_ineligible and temporary_deferral_until %}
+    <div class="status-pill pending" style="margin-top:10px;background:#fff3cd;color:#856404;border-color:#ffc107;">
+        Temporarily Ineligible – Alcohol (Eligible after: {{ temporary_deferral_until.strftime('%B %d, %Y %I:%M %p') }} UTC)
+    </div>
+    {% endif %}
+    
     {% else %}
     <div class="status-pill" style="background:#f0f0f0;color:#666;border-color:#ddd;">
         Status: Profile Incomplete - Fill in details above and submit
     </div>
     {% endif %}
+</section>
+
+<section class="section-card">
+    <h3>Donor Rewards & Leaderboard</h3>
+    <div class="stats-grid">
+        <div class="stat-card"><strong>{{ donor_reward_tier }}</strong><span>Your Reward Tier</span></div>
+        <div class="stat-card"><strong>{{ donor_units or 0 }}</strong><span>Total Units Donated</span></div>
+        <div class="stat-card"><strong>#{{ donor_rank or 1 }}</strong><span>Your Leaderboard Rank</span></div>
+    </div>
+
+    <div class="table-responsive" style="margin-top:14px;">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Donor</th>
+                    <th>Blood Group</th>
+                    <th>Units Donated</th>
+                    <th>Tier</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in donor_leaderboard %}
+                <tr>
+                    <td>#{{ loop.index }}</td>
+                    <td>{{ row.name or 'Donor' }}</td>
+                    <td>{{ row.blood_group or 'N/A' }}</td>
+                    <td>{{ row.units_donated or 0 }}</td>
+                    <td>
+                        {% set units = row.units_donated or 0 %}
+                        {% if units >= 10 %}Life Saver
+                        {% elif units >= 5 %}Gold Donor
+                        {% elif units >= 3 %}Silver Donor
+                        {% elif units >= 1 %}Bronze Donor
+                        {% else %}New Donor{% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" style="text-align:center;padding:20px;">No donations recorded yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>Request Blood for a Patient</h3>
+    <p>All requests require medical proof and admin verification.</p>
+    <form method="POST" class="form-grid" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="request_blood">
+        <label>Patient Name<input type="text" name="patient_name" required></label>
+        <label>Required Blood Group
+            <select name="blood_group" required>
+                <option value="">Select</option>
+                {% for bg in ['A+','A-','B+','B-','AB+','AB-','O+','O-'] %}
+                <option value="{{ bg }}">{{ bg }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Hospital Name<input type="text" name="hospital_name" required></label>
+        <label>Hospital Location<input type="text" name="hospital_location" required></label>
+        <label>Units Required<input type="number" name="units_required" min="1" required></label>
+        <label>Emergency Level
+            <select name="emergency_level" required>
+                <option value="Normal">Normal</option>
+                <option value="Urgent">Urgent</option>
+            </select>
+        </label>
+        <label>Contact Number<input type="text" name="contact_number" required></label>
+        <label>Relationship with Patient<input type="text" name="relationship_with_patient" required></label>
+        <label>Medical Proof (PDF/JPG/PNG)<input type="file" name="medical_proof" accept=".pdf,.jpg,.jpeg,.png" required></label>
+        <label>Additional Notes<textarea name="additional_notes" rows="3" placeholder="Optional"></textarea></label>
+        <button class="btn btn-primary" type="submit">Submit Blood Request</button>
+    </form>
+</section>
+
+<section class="section-card">
+    <h3>Incoming Donation Requests</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Request ID</th>
+                <th>Patient</th>
+                <th>Group</th>
+                <th>Location</th>
+                <th>Emergency</th>
+                <th>Accepted / Units</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for req in donation_requests %}
+            <tr>
+                <td>#{{ req.id }}</td>
+                <td>{{ req.patient_name }}</td>
+                <td>{{ req.blood_group }}</td>
+                <td>{{ req.hospital_location_snapshot or 'N/A' }}</td>
+                <td>{{ req.emergency_level or ('Urgent' if req.emergency else 'Normal') }}</td>
+                <td>{{ req.accepted_count }} / {{ req.units_required }}</td>
+                <td>
+                    {% if is_temporarily_ineligible %}
+                    <span style="color:#856404;font-weight:600;">Temporarily Ineligible</span>
+                    {% elif req.already_responded %}
+                    <span style="color:#666;">Responded</span>
+                    {% elif req.accepted_count >= req.units_required %}
+                    <span style="color:#999;">Closed</span>
+                    {% else %}
+                    <form method="POST" action="{{ url_for('donor.respond_to_blood_request', request_id=req.id) }}" style="display:flex;gap:8px;">
+                        <button class="btn btn-sm" name="response_status" value="Accepted" type="submit">Accept</button>
+                        <button class="btn btn-sm btn-outline" name="response_status" value="Declined" type="submit">Decline</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7">No active blood requests matching your blood group.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>My Blood Requests</h3>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Patient</th>
+                <th>Blood Group</th>
+                <th>Units</th>
+                <th>Emergency</th>
+                <th>Status</th>
+                <th>Accepted Donors</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for req in my_blood_requests %}
+            <tr>
+                <td>#{{ req.id }}</td>
+                <td>{{ req.patient_name }}</td>
+                <td>{{ req.blood_group }}</td>
+                <td>{{ req.units_required }}</td>
+                <td>{{ req.emergency_level or 'Normal' }}</td>
+                <td>{{ req.status }}</td>
+                <td>{{ req.accepted_donor_contacts or 'No accepted donors yet' }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7">You have not submitted any blood requests.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Live Request Tracker</h3>
+    <p>Auto-refreshes every 15 seconds for emergency requests and accepted donor responses.</p>
+
+    <h4 style="margin-bottom:8px;">Incoming Requests (Your Blood Group)</h4>
+    <table class="table" style="margin-bottom:16px;">
+        <thead>
+            <tr>
+                <th>Request</th>
+                <th>Patient</th>
+                <th>Location</th>
+                <th>Emergency</th>
+                <th>Accepted / Units</th>
+                <th>Priority</th>
+            </tr>
+        </thead>
+        <tbody id="live-incoming-body">
+            <tr><td colspan="6">Loading live incoming requests...</td></tr>
+        </tbody>
+    </table>
+
+    <h4 style="margin-bottom:8px;">My Request Fulfillment</h4>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Request</th>
+                <th>Patient</th>
+                <th>Status</th>
+                <th>Accepted / Units</th>
+                <th>Accepted Donors</th>
+            </tr>
+        </thead>
+        <tbody id="live-my-requests-body">
+            <tr><td colspan="5">Loading my request updates...</td></tr>
+        </tbody>
+    </table>
+</section>
+
+<section class="section-card">
+    <h3>Website Notifications</h3>
+    <table class="table">
+        <thead><tr><th>Type</th><th>Message</th><th>When</th></tr></thead>
+        <tbody>
+            {% for note in donor_notifications %}
+            <tr>
+                <td>{{ note.type }}</td>
+                <td>{{ note.message }}</td>
+                <td>{{ note.created_at }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3">No notifications yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
 </section>
 
 <section class="section-card">
@@ -76,9 +345,11 @@
             <thead>
                 <tr>
                     <th>Event</th>
-                    <th>Date</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
                     <th>Location</th>
                     <th>Camp</th>
+                    <th>Phone</th>
                     <th>Required Groups</th>
                     <th>Target Units</th>
                     <th>Preferred Slot</th>
@@ -90,13 +361,15 @@
                 <tr>
                     <td>{{ event.event_name }}</td>
                     <td>{{ event.event_date }}</td>
+                    <td>{{ event.event_end_date or event.event_date }}</td>
                     <td>
                         {{ event.location }}
                         {% if event.nearby_score %}
                         <div style="font-size:0.85rem;color:green;font-weight:700;">Nearby</div>
                         {% endif %}
                     </td>
-                    <td>{{ event.camp_name }}{% if event.contact_info or event.camp_phone %}<div style="font-size:0.85rem;">{{ event.contact_info or event.camp_phone }}</div>{% endif %}</td>
+                    <td>{{ event.camp_name }}</td>
+                    <td>{{ event.contact_info or event.camp_phone or '—' }}</td>
                     <td>{{ event.required_groups or 'All groups' }}</td>
                     <td>{{ event.target_units }}</td>
                     <td>
@@ -114,7 +387,10 @@
                         {% endif %}
                     </td>
                     <td>
-                        {% if not event.already_registered %}
+                        {% set event_end = event.event_end_date or event.event_date %}
+                        {% if event_end < today_date %}
+                        <span style="color:#999;font-weight:600;">Event is Ended</span>
+                        {% elif not event.already_registered %}
                         <button class="btn btn-sm" type="submit" form="register-event-{{ event.id }}">Register</button>
                         {% else %}
                         <span style="font-size:0.9rem;">—</span>
@@ -122,7 +398,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8" style="text-align:center;padding:20px;">No upcoming camps available.</td></tr>
+                <tr><td colspan="10" style="text-align:center;padding:20px;">No upcoming camps available.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -142,6 +418,7 @@
                     <th>Status</th>
                     <th>Units Collected</th>
                     <th>Donated At</th>
+                    <th>Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -154,14 +431,128 @@
                     <td>{{ row.registration_status }}</td>
                     <td>{{ row.units_collected or 0 }}</td>
                     <td>{{ row.donated_at or 'N/A' }}</td>
+                    <td>
+                        {% if row.donated_at and row.donated_at != '' %}
+                        <span style="color:green;font-weight:700;">✓ Donation Completed</span>
+                        {% else %}
+                        <span style="color:#999;">{{ row.donated_at or '—' }}</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="7" style="text-align:center;padding:20px;">No camp registrations yet.</td></tr>
+                <tr><td colspan="8" style="text-align:center;padding:20px;">No camp registrations yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </section>
+
+<section class="section-card" style="background: linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%); border: 2px solid #fee2e2;">
+    <h3 style="color: #dc2626; margin-top: 0;">📅 Submit Donation Date to Admin Camp</h3>
+    <p style="color: #666; font-size: 14px; margin-bottom: 16px;">
+        <strong>Alternative to Blood Camp Events:</strong> Select your preferred donation date directly. No admin approval needed—just submit and choose a date that works for you. If you can't make it, you can reselect a new date anytime without any penalty.
+    </p>
+
+    <form method="POST" action="{{ url_for('donor.submit_admin_camp_donation') }}" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+        <div style="flex: 1; min-width: 200px;">
+            <label style="display: block; margin-bottom: 4px; font-weight: 600; font-size: 14px;">Preferred Donation Date</label>
+            <input type="date" name="donation_date" min="{{ today_date.strftime('%Y-%m-%d') }}" required style="width: 100%; padding: 10px; border: 2px solid #fecaca; border-radius: 6px; font-size: 14px;">
+            <small style="display: block; margin-top: 4px; color: #666; font-size: 12px;">Must be a future date on or after {{ (next_eligible_date.strftime('%B %d, %Y') if next_eligible_date else 'today') }}</small>
+        </div>
+        <button type="submit" name="action" value="submit" class="btn btn-primary" style="white-space: nowrap;">Submit Date</button>
+    </form>
+
+    <div style="margin-top: 20px; border-top: 1px solid #fecaca; padding-top: 20px;">
+        <h4 style="margin-top: 0; color: #991b1b;">Your Admin Camp Donations</h4>
+        <div class="table-responsive">
+            <table class="table table-spaced" style="font-size: 14px;">
+                <thead>
+                    <tr style="background: #fee2e2;">
+                        <th>Submitted Date</th>
+                        <th>Donation Date</th>
+                        <th>Status</th>
+                        <th>Donated On</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for donation in admin_camp_donations %}
+                    <tr style="border-bottom: 1px solid #fecaca;">
+                        <td style="font-size: 12px; color: #666;">{{ donation.created_at.strftime('%b %d, %Y') if donation.created_at else '—' }}</td>
+                        <td style="font-weight: 600;">{{ donation.selected_donation_date.strftime('%B %d, %Y') if donation.selected_donation_date else '—' }}</td>
+                        <td>
+                            {% if donation.status == 'Pending' %}
+                                {% if donation.selected_donation_date < today_date %}
+                                    <span style="background: #fed7aa; color: #92400e; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">⚠ Overdue (Can Reselect)</span>
+                                {% else %}
+                                    <span style="background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">⏳ Pending</span>
+                                {% endif %}
+                            {% elif donation.status == 'Donated' %}
+                                <span style="background: #dcfce7; color: #166534; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">✓ Donated</span>
+                            {% elif donation.status == 'Missed' %}
+                                <span style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">❌ Missed (Can Reselect)</span>
+                            {% else %}
+                                <span style="color: #666;">{{ donation.status }}</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size: 12px; color: #666;">{{ donation.donated_at.strftime('%B %d, %Y') if donation.donated_at else '—' }}</td>
+                        <td>
+                            {% if donation.status in ['Pending', 'Missed'] %}
+                                <form method="POST" action="{{ url_for('donor.submit_admin_camp_donation') }}" style="display: inline;">
+                                    <input type="hidden" name="action" value="reselect">
+                                    <input type="hidden" name="donation_id" value="{{ donation.id }}">
+                                    <button type="button" class="btn btn-sm" style="background: #f97316; color: white; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;" data-donation-id="{{ donation.id }}" data-donation-date="{{ donation.selected_donation_date.strftime('%Y-%m-%d') }}" onclick="openReselectModal(this.dataset.donationId, this.dataset.donationDate)">Reselect</button>
+                                </form>
+                            {% else %}
+                                <span style="color: #999; font-size: 12px;">—</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" style="text-align:center;padding:16px;color:#999;">No admin camp donations yet. Submit a date above to get started!</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<!-- Modal for reselecting donation date -->
+<div id="reselectModal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+    <div style="background: white; padding: 24px; border-radius: 12px; width: 90%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <h3 style="margin-top: 0; color: #dc2626;">Reselect Donation Date</h3>
+        <form method="POST" action="{{ url_for('donor.submit_admin_camp_donation') }}">
+            <input type="hidden" name="action" value="reselect">
+            <input type="hidden" name="donation_id" id="reselectDonationId" value="">
+            
+            <label style="display: block; margin-bottom: 4px; font-weight: 600;">New Donation Date</label>
+            <input type="date" name="donation_date" id="reselectDateInput" min="{{ today_date.strftime('%Y-%m-%d') }}" required style="width: 100%; padding: 10px; border: 2px solid #e5e7eb; border-radius: 6px; margin-bottom: 16px;box-sizing: border-box;">
+            <small style="display: block; margin-bottom: 16px; color: #666;">Select a future date on or after your next eligible date.</small>
+            
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Confirm</button>
+                <button type="button" class="btn" style="flex: 1; background: #e5e7eb; color: #1f2937; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600;" onclick="closeReselectModal()">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openReselectModal(donationId, currentDate) {
+    document.getElementById('reselectDonationId').value = donationId;
+    document.getElementById('reselectDateInput').value = currentDate;
+    document.getElementById('reselectModal').style.display = 'flex';
+}
+
+function closeReselectModal() {
+    document.getElementById('reselectModal').style.display = 'none';
+}
+
+// Close modal when clicking outside
+document.getElementById('reselectModal').addEventListener('click', (e) => {
+    if (e.target.id === 'reselectModal') closeReselectModal();
+});
+</script>
 
 <section class="section-card">
     <h2 style="color: var(--red-dark); margin-bottom: 20px;">🩸 Donor Eligibility</h2>
@@ -250,6 +641,9 @@
     const firstTimeCheckbox = document.getElementById('first_time_donor');
     const lastDonationWrap = document.getElementById('last-donation-wrap');
     const lastDonationInput = document.getElementById('last_donation');
+    const alcoholSelect = document.getElementById('alcohol_consumed_recently');
+    const lastAlcoholWrap = document.getElementById('last-alcohol-wrap');
+    const lastAlcoholInput = document.getElementById('last_alcohol_consumption_datetime');
 
     if (!firstTimeCheckbox || !lastDonationWrap || !lastDonationInput) return;
 
@@ -264,6 +658,105 @@
 
     firstTimeCheckbox.addEventListener('change', syncLastDonationVisibility);
     syncLastDonationVisibility();
+
+    const syncAlcoholFields = () => {
+        if (!alcoholSelect || !lastAlcoholWrap || !lastAlcoholInput) return;
+        const consumed = alcoholSelect.value === 'yes';
+        lastAlcoholWrap.style.display = consumed ? '' : 'none';
+        lastAlcoholInput.disabled = !consumed;
+        lastAlcoholInput.required = consumed;
+        if (!consumed) lastAlcoholInput.value = '';
+    };
+
+    if (alcoholSelect) {
+        alcoholSelect.addEventListener('change', syncAlcoholFields);
+        syncAlcoholFields();
+    }
+})();
+
+(() => {
+    const countdownElement = document.getElementById('deferral-countdown');
+    if (!countdownElement) return;
+
+    const targetIso = countdownElement.dataset.deferralUntil;
+    if (!targetIso) return;
+
+    const updateCountdown = () => {
+        const target = new Date(targetIso).getTime();
+        const now = Date.now();
+        const diff = target - now;
+
+        if (diff <= 0) {
+            countdownElement.textContent = 'Countdown: Eligible now';
+            return;
+        }
+
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+        countdownElement.textContent = `Countdown: ${hours}h ${minutes}m ${seconds}s`;
+    };
+
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+})();
+
+(() => {
+    const incomingBody = document.getElementById('live-incoming-body');
+    const myRequestsBody = document.getElementById('live-my-requests-body');
+
+    const renderIncoming = (rows) => {
+        if (!rows || !rows.length) {
+            incomingBody.innerHTML = '<tr><td colspan="6">No live requests available.</td></tr>';
+            return;
+        }
+
+        incomingBody.innerHTML = rows.map((row) => `
+            <tr>
+                <td>#${row.id}</td>
+                <td>${row.patient_name || 'N/A'} (${row.blood_group || 'N/A'})</td>
+                <td>${row.hospital_location_snapshot || 'N/A'}</td>
+                <td>${row.emergency_level || 'Normal'}</td>
+                <td>${row.accepted_count || 0} / ${row.units_required || 0}</td>
+                <td><strong>${row.ai_priority_score || 0}</strong></td>
+            </tr>
+        `).join('');
+    };
+
+    const renderMyRequests = (rows) => {
+        if (!rows || !rows.length) {
+            myRequestsBody.innerHTML = '<tr><td colspan="5">No request updates yet.</td></tr>';
+            return;
+        }
+
+        myRequestsBody.innerHTML = rows.map((row) => `
+            <tr>
+                <td>#${row.id}</td>
+                <td>${row.patient_name || 'N/A'} (${row.blood_group || 'N/A'})</td>
+                <td>${row.status || 'Pending'}</td>
+                <td>${row.accepted_count || 0} / ${row.units_required || 0}</td>
+                <td>${row.accepted_donor_contacts || 'No accepted donors yet'}</td>
+            </tr>
+        `).join('');
+    };
+
+    const pollLive = async () => {
+        try {
+            const response = await fetch("{{ url_for('donor.live_requests_api') }}", {
+                headers: { "X-Requested-With": "XMLHttpRequest" }
+            });
+            if (!response.ok) throw new Error('Failed');
+            const payload = await response.json();
+            renderIncoming(payload.incoming || []);
+            renderMyRequests(payload.my_requests || []);
+        } catch (_error) {
+            incomingBody.innerHTML = '<tr><td colspan="6">Failed to fetch live incoming requests.</td></tr>';
+            myRequestsBody.innerHTML = '<tr><td colspan="5">Failed to fetch my request updates.</td></tr>';
+        }
+    };
+
+    pollLive();
+    setInterval(pollLive, 15000);
 })();
 </script>
 {% endblock %}

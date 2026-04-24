@@ -14,9 +14,11 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    AUTH_COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "donation_auth")
     PREFERRED_URL_SCHEME = "https"
 
     MYSQL_HOST = os.getenv("MYSQL_HOST", "localhost")
+    MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
     MYSQL_USER = os.getenv("MYSQL_USER", "root")
     MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
     MYSQL_DB = os.getenv("MYSQL_DB", "donation_management")
@@ -41,3 +43,10 @@ class Config:
     MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "false").lower() == "true"
 
     RESET_TOKEN_MINUTES = int(os.getenv("RESET_TOKEN_MINUTES", "30"))
+
+    DONOR_ROUTING_EMERGENCY_PRIORITY_THRESHOLD = int(
+        os.getenv("DONOR_ROUTING_EMERGENCY_PRIORITY_THRESHOLD", "70")
+    )
+    RARE_BLOOD_PROTECTION_ENABLED = (
+        os.getenv("RARE_BLOOD_PROTECTION_ENABLED", "true").lower() == "true"
+    )

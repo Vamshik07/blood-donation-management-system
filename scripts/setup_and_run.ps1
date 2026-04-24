@@ -17,6 +17,7 @@ if ($env:VIRTUAL_ENV) {
 }
 
 $pythonCandidates += @(
+    (Join-Path $projectRoot '.venv-2\Scripts\python.exe'),
     (Join-Path $projectRoot '.venv-1\Scripts\python.exe'),
     (Join-Path $projectRoot '.venv\Scripts\python.exe')
 )
@@ -65,7 +66,6 @@ Write-Host "2) Run migration scripts from database/MIGRATIONS.md (if needed)" -F
 Write-Host "3) Insert admin@blood.com with bcrypt hash (use scripts/generate_admin_hash.py)" -ForegroundColor Magenta
 Write-Host "" 
 Write-Host "Optional integrations:" -ForegroundColor DarkCyan
-Write-Host "- Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env for OAuth" -ForegroundColor DarkCyan
 Write-Host "- Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER in .env for SMS" -ForegroundColor DarkCyan
 
 if (-not $SkipRun) {

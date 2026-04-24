@@ -1,0 +1,7 @@
+ALTER TABLE blood_requests
+    ADD COLUMN IF NOT EXISTS ai_priority_score INT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS fraud_risk_score INT DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS fraud_flags VARCHAR(255) NULL;
+
+ALTER TABLE donors
+    MODIFY approved BOOLEAN DEFAULT TRUE;

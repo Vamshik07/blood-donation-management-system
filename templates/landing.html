@@ -97,9 +97,10 @@
 <section class="section-card center-block">
     <h3>Real Impact</h3>
     <div class="stats-grid" style="margin-top:20px;">
-        <div class="stat-card"><strong>1 Donation</strong><span>Up to 3 Lives Saved</span></div>
-        <div class="stat-card"><strong>Every 2 Seconds</strong><span>Someone Needs Blood</span></div>
-        <div class="stat-card"><strong>100%</strong><span>Transparent Request Tracking</span></div>
+        <div class="stat-card"><strong>{{ total_donors or 0 }}</strong><span>Total Donors</span></div>
+        <div class="stat-card"><strong>{{ total_requests or 0 }}</strong><span>Total Blood Requests</span></div>
+        <div class="stat-card"><strong>{{ lives_saved or 0 }}</strong><span>Estimated Lives Saved</span></div>
+        <div class="stat-card"><strong>{{ upcoming_camps or 0 }}</strong><span>Upcoming Blood Camps</span></div>
     </div>
     <p class="tagline">Together, we reduce delays. Together, we save lives.</p>
 </section>

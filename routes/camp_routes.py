@@ -1,18 +1,33 @@
 import MySQLdb.cursors
 import csv
 from io import StringIO
+from datetime import datetime
 from uuid import uuid4
 
 from flask import Blueprint, Response, current_app, flash, redirect, render_template, request, url_for
 
 from extensions import mysql
-from models.models import current_user_payload, jwt_required, log_activity
+from models.models import current_user_payload, jwt_required, log_activity, check_donation_eligibility
 from services.email_service import send_email
 from services.notifications import send_sms_update
 
 camp = Blueprint("camp", __name__, url_prefix="/camp")
 
 BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
+
+
+def _is_camp_profile_complete(camp_row):
+    if not camp_row:
+        return False
+
+    return bool(
+        (camp_row.get("camp_name") or "").strip()
+        and (camp_row.get("phone") or "").strip()
+        and (camp_row.get("location") or "").strip()
+        and int(camp_row.get("days") or 0) > 0
+        and int(camp_row.get("slots_per_day") or 0) > 0
+        and int(camp_row.get("expected_donors") or 0) > 0
+    )
 
 
 @camp.route("/dashboard", methods=["GET", "POST"])
@@ -40,7 +55,7 @@ def dashboard():
                 flash("Enter a valid contact number with at least 10 digits.", "error")
                 return redirect(url_for("camp.dashboard"))
 
-            cursor = mysql.connection.cursor()
+            cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cursor.execute(
                 """
                 UPDATE blood_camps
@@ -49,12 +64,22 @@ def dashboard():
                     location = %s,
                     days = %s,
                     slots_per_day = %s,
-                    expected_donors = %s,
-                    approved = FALSE
+                    expected_donors = %s
                 WHERE id = %s
                 """,
                 (camp_name, phone, location, days, slots_per_day, expected_donors, camp_id),
             )
+
+            cursor.execute("SELECT * FROM blood_camps WHERE id = %s", (camp_id,))
+            camp_row = cursor.fetchone()
+            cursor.execute("SELECT COUNT(*) AS total FROM camp_events WHERE camp_id = %s", (camp_id,))
+            event_count_row = cursor.fetchone() or {"total": 0}
+
+            pending_approval_requested = False
+            if camp_row and bool(camp_row.get("approved")) and _is_camp_profile_complete(camp_row) and int(event_count_row.get("total") or 0) > 0:
+                cursor.execute("UPDATE blood_camps SET approved = FALSE WHERE id = %s", (camp_id,))
+                pending_approval_requested = True
+
             mysql.connection.commit()
             cursor.close()
 
@@ -68,23 +93,52 @@ def dashboard():
                 f"Camp profile updated: {camp_name}",
             )
 
-            flash("Camp details submitted. Waiting for admin approval.", "success")
+            if pending_approval_requested:
+                flash("Camp profile updated. Approval request has been sent to admin after completing profile and event details.", "success")
+            else:
+                flash("Camp profile details saved.", "success")
             return redirect(url_for("camp.dashboard"))
 
         if action == "create_event":
             event_name = request.form.get("event_name", "").strip()
             event_location = request.form.get("event_location", "").strip()
-            event_date = request.form.get("event_date", "").strip()
+            event_start_date = request.form.get("event_start_date", "").strip()
+            event_end_date = request.form.get("event_end_date", "").strip()
             target_units = int(request.form.get("target_units", "0") or 0)
             required_groups = request.form.getlist("required_blood_groups")
             contact_info = request.form.get("event_contact", "").strip()
+            organizer_name = request.form.get("organizer_name", "").strip()
+            camp_phone = request.form.get("camp_phone", "").strip()
 
-            if not event_name or not event_location or not event_date:
-                flash("Event name, location and date are required.", "error")
+            if not event_name or not event_location or not event_start_date or not event_end_date:
+                flash("Event name, location, start date and end date are required.", "error")
+                return redirect(url_for("camp.dashboard"))
+
+            if not organizer_name:
+                flash("Organizer name is required.", "error")
+                return redirect(url_for("camp.dashboard"))
+
+            if not camp_phone:
+                flash("Camp phone is required.", "error")
+                return redirect(url_for("camp.dashboard"))
+
+            if not camp_phone.replace("+", "", 1).isdigit() or len(camp_phone.replace("+", "", 1)) < 10:
+                flash("Enter a valid camp phone number with at least 10 digits.", "error")
                 return redirect(url_for("camp.dashboard"))
 
             if target_units < 1:
                 flash("Target units must be greater than 0.", "error")
+                return redirect(url_for("camp.dashboard"))
+
+            try:
+                start_date_obj = datetime.strptime(event_start_date, "%Y-%m-%d").date()
+                end_date_obj = datetime.strptime(event_end_date, "%Y-%m-%d").date()
+            except ValueError:
+                flash("Enter valid start and end dates.", "error")
+                return redirect(url_for("camp.dashboard"))
+
+            if end_date_obj < start_date_obj:
+                flash("End date must be on or after start date.", "error")
                 return redirect(url_for("camp.dashboard"))
 
             normalized_groups = sorted({bg for bg in required_groups if bg in BLOOD_GROUPS})
@@ -93,19 +147,45 @@ def dashboard():
                 return redirect(url_for("camp.dashboard"))
 
             cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            cursor.execute("SELECT approved FROM blood_camps WHERE id = %s", (camp_id,))
+            cursor.execute("SELECT * FROM blood_camps WHERE id = %s", (camp_id,))
             camp_row = cursor.fetchone()
             if not camp_row or not camp_row.get("approved"):
                 cursor.close()
-                flash("Only approved camps can create events.", "error")
+                flash("Your camp is pending admin approval. You can create events again after approval.", "error")
+                return redirect(url_for("camp.dashboard"))
+
+            if not _is_camp_profile_complete(camp_row):
+                cursor.close()
+                flash("Complete the Blood Camp Dashboard details before creating an event.", "error")
                 return redirect(url_for("camp.dashboard"))
 
             cursor.execute(
                 """
-                INSERT INTO camp_events (camp_id, event_name, location, event_date, target_units, contact_info, status)
-                VALUES (%s, %s, %s, %s, %s, %s, 'Upcoming')
+                INSERT INTO camp_events (
+                    camp_id,
+                    event_name,
+                    location,
+                    event_date,
+                    event_end_date,
+                    target_units,
+                    contact_info,
+                    organizer_name,
+                    camp_phone,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'Upcoming')
                 """,
-                (camp_id, event_name, event_location, event_date, target_units, contact_info or None),
+                (
+                    camp_id,
+                    event_name,
+                    event_location,
+                    event_start_date,
+                    event_end_date,
+                    target_units,
+                    contact_info or None,
+                    organizer_name,
+                    camp_phone,
+                ),
             )
             event_id = cursor.lastrowid
 
@@ -124,12 +204,18 @@ def dashboard():
                 SELECT id, name, email, phone
                 FROM donors
                 WHERE approved = TRUE
+                                    AND COALESCE(account_suspended, FALSE) = FALSE
+                                    AND COALESCE(is_permanently_deferred, FALSE) = FALSE
+                                    AND donor_status IN ('Pre-Eligible', 'Medically Cleared')
+                                    AND (temporary_deferral_until IS NULL OR temporary_deferral_until <= NOW())
                   AND blood_group IN ({placeholders})
                   AND (address LIKE %s OR %s = '')
                 """,
                 tuple(normalized_groups + [f"%{event_location}%", event_location]),
             )
             notification_targets = cursor.fetchall()
+
+            cursor.execute("UPDATE blood_camps SET approved = FALSE WHERE id = %s", (camp_id,))
 
             mysql.connection.commit()
             cursor.close()
@@ -138,8 +224,8 @@ def dashboard():
                 donor_phone = donor.get("phone")
                 donor_email = donor.get("email")
                 notify_message = (
-                    f"New blood camp event '{event_name}' on {event_date} at {event_location}. "
-                    f"Required groups: {', '.join(normalized_groups)}."
+                    f"New blood camp event '{event_name}' from {event_start_date} to {event_end_date} at {event_location}. "
+                    f"Organizer: {organizer_name}. Camp phone: {camp_phone}. Required groups: {', '.join(normalized_groups)}."
                 )
                 if donor_phone:
                     send_sms_update(donor_phone, notify_message, current_app.config)
@@ -158,10 +244,10 @@ def dashboard():
                 "camp_event_created",
                 "camp_event",
                 event_id,
-                f"Event '{event_name}' on {event_date} at {event_location}",
+                f"Event '{event_name}' from {event_start_date} to {event_end_date} at {event_location}; organizer={organizer_name}; camp_phone={camp_phone}",
             )
 
-            flash("Camp event created successfully.", "success")
+            flash("Camp event created. Your profile is now pending admin approval.", "success")
             return redirect(url_for("camp.dashboard"))
 
         flash("Invalid action.", "error")
@@ -170,6 +256,17 @@ def dashboard():
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute("SELECT * FROM blood_camps WHERE id = %s", (camp_id,))
     camp_data = cursor.fetchone()
+
+    cursor.execute("SELECT COUNT(*) AS total FROM camp_events WHERE camp_id = %s", (camp_id,))
+    existing_event_count_row = cursor.fetchone() or {"total": 0}
+    existing_event_count = int(existing_event_count_row.get("total") or 0)
+
+    # Backward compatibility: older flow set camps to pending right after profile submit.
+    # Re-enable camps with no events so they can create their first event before approval.
+    if camp_data and not bool(camp_data.get("approved")) and existing_event_count == 0:
+        cursor.execute("UPDATE blood_camps SET approved = TRUE WHERE id = %s", (camp_id,))
+        mysql.connection.commit()
+        camp_data["approved"] = True
 
     cursor.execute(
         """
@@ -190,8 +287,11 @@ def dashboard():
             ce.event_name,
             ce.location,
             ce.event_date,
+            ce.event_end_date,
             ce.target_units,
             ce.contact_info,
+            ce.organizer_name,
+            ce.camp_phone,
             ce.status,
             COALESCE(SUM(cer.units_collected), 0) AS units_collected,
             COUNT(cer.id) AS total_registered,
@@ -273,7 +373,10 @@ def dashboard():
             ce.event_name,
             ce.location,
             ce.event_date,
+            ce.event_end_date,
             ce.target_units,
+            ce.organizer_name,
+            ce.camp_phone,
             ce.status,
             COALESCE(SUM(cer.units_collected), 0) AS units_collected,
             COUNT(cer.id) AS total_registered
@@ -302,6 +405,9 @@ def dashboard():
         "most_common_blood_group": (top_group_row or {}).get("blood_group") or "N/A",
     }
 
+    camp_profile_complete = _is_camp_profile_complete(camp_data)
+    camp_has_event = (existing_event_count > 0) or bool(upcoming_events or past_events)
+
     return render_template(
         "camp_dashboard.html",
         camp=camp_data,
@@ -310,6 +416,8 @@ def dashboard():
         past_events=past_events,
         camp_stats=camp_stats,
         blood_groups=BLOOD_GROUPS,
+        camp_profile_complete=camp_profile_complete,
+        camp_has_event=camp_has_event,
     )
 
 
@@ -337,6 +445,7 @@ def complete_registration(registration_id):
             ce.event_name,
             d.blood_group,
             d.blood_group_verified,
+            d.donor_status,
             d.phone
         FROM camp_event_registrations cer
         JOIN camp_events ce ON ce.id = cer.event_id
@@ -356,6 +465,11 @@ def complete_registration(registration_id):
     if registration_row["registration_status"] == "Donated":
         cursor.close()
         flash("Donation is already marked complete for this registration.", "error")
+        return redirect(url_for("camp.dashboard"))
+
+    if (registration_row.get("donor_status") or "").strip() != "Medically Cleared":
+        cursor.close()
+        flash("Only Medically Cleared donors can complete donation.", "error")
         return redirect(url_for("camp.dashboard"))
 
     cursor.execute(
@@ -481,7 +595,7 @@ def event_report_csv(event_id):
     cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cursor.execute(
         """
-        SELECT id, event_name, event_date, location, target_units
+                SELECT id, event_name, event_date, event_end_date, location, target_units, organizer_name, camp_phone
         FROM camp_events
         WHERE id = %s
           AND camp_id = %s
@@ -516,8 +630,11 @@ def event_report_csv(event_id):
     buffer = StringIO()
     csv_writer = csv.writer(buffer)
     csv_writer.writerow(["Event", event_row["event_name"]])
-    csv_writer.writerow(["Date", str(event_row["event_date"])])
+    csv_writer.writerow(["Start Date", str(event_row["event_date"])])
+    csv_writer.writerow(["End Date", str(event_row.get("event_end_date") or event_row["event_date"])])
     csv_writer.writerow(["Location", event_row["location"]])
+    csv_writer.writerow(["Organizer", event_row.get("organizer_name") or "N/A"])
+    csv_writer.writerow(["Camp Phone", event_row.get("camp_phone") or "N/A"])
     csv_writer.writerow(["Target Units", event_row["target_units"]])
     csv_writer.writerow([])
     csv_writer.writerow(["Donor Name", "Blood Group", "Preferred Slot", "Status", "Units Collected", "Donated At"])

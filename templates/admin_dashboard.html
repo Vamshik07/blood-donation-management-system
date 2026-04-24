@@ -11,6 +11,11 @@
         margin-left: auto;
         margin-right: auto;
     }
+
+    .admin-donation-row-overdue { background: #fee2e2; }
+    .admin-donation-row-normal { background: #fffbeb; }
+    .admin-donation-date-overdue { color: #dc2626; }
+    .admin-donation-date-normal { color: #1f2937; }
 </style>
 {% endblock %}
 
@@ -64,9 +69,35 @@
     {% endif %}
 
     <div class="toggle-row">
-        <button class="btn btn-primary toggle-btn" data-target="donor-section">Donor Requests</button>
+        <button class="btn btn-primary toggle-btn" data-target="donor-section">Donor Management</button>
         <button class="btn btn-primary toggle-btn" data-target="hospital-section">Hospital Requests</button>
         <button class="btn btn-primary toggle-btn" data-target="camp-section">Blood Camp Requests</button>
+    </div>
+</section>
+
+<section class="section-card">
+    <h3>Live Emergency Command Center</h3>
+    <p>Real-time queue of active blood requests with AI/fraud signals and quick actions.</p>
+    <div id="admin-live-stock-alert" class="flash flash-error" style="display:none;margin-bottom:12px;"></div>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Requester</th>
+                    <th>Patient</th>
+                    <th>Need</th>
+                    <th>Priority</th>
+                    <th>Fraud</th>
+                    <th>Accepted</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="admin-command-live-body">
+                <tr><td colspan="9">Loading command center feed...</td></tr>
+            </tbody>
+        </table>
     </div>
 </section>
 
@@ -95,7 +126,7 @@
         </table>
     </div>
 
-    <h3>Donor Requests</h3>
+    <h3>Donor Management</h3>
     <div class="table-responsive">
         <table class="table table-spaced">
             <thead>
@@ -104,38 +135,60 @@
                     <th style="width:150px;">Name</th>
                     <th style="width:200px;">Email</th>
                     <th style="width:100px;">Blood Group</th>
+                    <th style="width:120px;">Verification</th>
                     <th style="width:140px;">Phone</th>
-                    <th style="width:220px;">Schedule Date</th>
-                    <th style="width:100px;">Approve</th>
-                    <th style="width:80px;">Reject</th>
+                    <th style="width:110px;">Registered</th>
+                    <th style="width:90px;">Status</th>
+                    <th style="width:140px;">Deferral Reason</th>
+                    <th style="width:170px;">Deferral Ends</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in donors %}
                 <tr>
-                    <td>{{ loop.index }}</td>
+                    {% set effective_status = row.donor_status or 'Registered' %}
+                    {% if row.is_permanently_deferred %}
+                        {% set effective_status = 'Permanently Deferred' %}
+                    {% elif row.temporary_deferral_until and row.temporary_deferral_until > current_time %}
+                        {% set effective_status = 'Temporarily Deferred' %}
+                    {% elif row.account_status == 'Registered' %}
+                        {% set effective_status = 'Registered' %}
+                    {% elif effective_status not in ['Pre-Eligible', 'Medically Cleared'] %}
+                        {% set effective_status = 'Pre-Eligible' %}
+                    {% endif %}
+                    <td>{{ row.id }}</td>
                     <td>{{ row.name or 'N/A' }}</td>
                     <td>{{ row.email }}</td>
                     <td>{{ row.blood_group or 'N/A' }}</td>
-                    <td>{{ row.phone or 'N/A' }}</td>
-                    <td style="padding:10px;">
-                        <input type="date" name="scheduled_donation_at" form="approve-donor-{{ row.id }}" required style="width:100%;padding:6px;">
-                    </td>
                     <td>
-                        <form id="approve-donor-{{ row.id }}" method="POST" action="{{ url_for('admin.approve_donor_with_schedule', donor_id=row.id) }}" style="display:inline;">
-                            <button class="btn btn-sm" type="submit">Approve</button>
-                        </form>
+                        {% if row.blood_group == 'UNKNOWN' or not row.blood_group %}
+                        <span style="color:#856404;font-size:0.85rem;">⚠ Unknown</span>
+                        {% elif row.blood_group_verified %}
+                        <span style="color:green;font-weight:bold;font-size:0.85rem;">✓ Verified</span>
+                        {% else %}
+                        <span style="color:#ff9800;font-size:0.85rem;">⚠ Self-reported</span>
+                        {% endif %}
                     </td>
-                    <td><a class="btn btn-sm btn-outline" href="{{ url_for('admin.reject_entity', entity='donor', entity_id=row.id) }}">Reject</a></td>
+                    <td>{{ row.phone or 'N/A' }}</td>
+                    <td style="font-size:0.9rem;">{{ row.created_at }}</td>
+                    <td>{{ effective_status }}</td>
+                    <td>{% if row.deferral_reason %}{{ row.deferral_reason }}{% else %}—{% endif %}</td>
+                    <td>
+                        {% if row.temporary_deferral_until and row.temporary_deferral_until > current_time %}
+                        {{ row.temporary_deferral_until.strftime('%Y-%m-%d %H:%M') }} UTC
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="8" style="text-align:center;padding:20px;">No pending donor requests.</td></tr>
+                <tr><td colspan="10" style="text-align:center;padding:20px;">No donors found.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <h3 style="margin-top:32px;">Recently Approved Donors</h3>
+    <h3 style="margin-top:32px;">Recent Donor Activity</h3>
     <div class="table-responsive">
         <table class="table table-spaced">
             <thead>
@@ -147,17 +200,27 @@
                     <th style="width:120px;">Verification</th>
                     <th style="width:120px;">Phone</th>
                     <th style="width:110px;">Registered</th>
-                    <th style="width:110px;">Approved</th>
-                    <th style="width:110px;">Scheduled</th>
+                    <th style="width:110px;">Last Donation</th>
                     <th style="width:90px;">Status</th>
                     <th style="width:100px;">Units</th>
+                    <th style="width:140px;">Deferral Reason</th>
+                    <th style="width:170px;">Deferral Ends</th>
                     <th style="width:140px;">Complete</th>
-                    <th style="width:140px;">Reschedule</th>
                 </tr>
             </thead>
             <tbody>
                 {% for row in approved_donors %}
                 <tr>
+                    {% set effective_status = row.donor_status or 'Registered' %}
+                    {% if row.is_permanently_deferred %}
+                        {% set effective_status = 'Permanently Deferred' %}
+                    {% elif row.temporary_deferral_until and row.temporary_deferral_until > current_time %}
+                        {% set effective_status = 'Temporarily Deferred' %}
+                    {% elif row.account_status == 'Registered' %}
+                        {% set effective_status = 'Registered' %}
+                    {% elif effective_status not in ['Pre-Eligible', 'Medically Cleared'] %}
+                        {% set effective_status = 'Pre-Eligible' %}
+                    {% endif %}
                     <td>{{ loop.index }}</td>
                     <td>{{ row.name or 'N/A' }}</td>
                     <td>{{ row.email }}</td>
@@ -173,18 +236,31 @@
                     </td>
                     <td>{{ row.phone or 'N/A' }}</td>
                     <td style="font-size:0.9rem;">{{ row.registered_at }}</td>
-                    <td style="font-size:0.9rem;">{{ row.approved_at }}</td>
-                    <td style="font-size:0.9rem;">{% if row.scheduled_donation_at %}{{ row.scheduled_donation_at.strftime('%Y-%m-%d') }}{% else %}N/A{% endif %}</td>
+                    <td style="font-size:0.9rem;">{{ row.last_donation or 'N/A' }}</td>
                     <td>
-                        {% if (row.donation_status or 'Pending') == 'Completed' %}
+                        {% if effective_status == 'Medically Cleared' %}
                         <span class="status-badge status-completed">Completed</span>
+                        {% elif effective_status in ['Temporarily Deferred', 'Permanently Deferred'] %}
+                        <span class="status-badge status-pending">{{ effective_status }}</span>
                         {% else %}
-                        <span class="status-badge status-pending">Pending</span>
+                        <span class="status-badge status-pending">{{ effective_status }}</span>
                         {% endif %}
                     </td>
                     <td style="font-weight:bold;font-size:1rem;color:var(--red-dark);">{{ row.units_donated or 0 }} units</td>
+                    <td>{% if row.deferral_reason %}{{ row.deferral_reason }}{% else %}—{% endif %}</td>
                     <td>
-                        {% if (row.donation_status or 'Pending') != 'Completed' %}
+                        {% if row.temporary_deferral_until and row.temporary_deferral_until > current_time %}
+                        {{ row.temporary_deferral_until.strftime('%Y-%m-%d %H:%M') }} UTC
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if effective_status in ['Temporarily Deferred', 'Permanently Deferred'] %}
+                        <span style="color:#856404;font-weight:bold;">Deferred</span>
+                        {% elif effective_status != 'Medically Cleared' %}
+                        <span style="color:#856404;font-weight:bold;">Needs Medical Clearance</span>
+                        {% elif (row.donation_status or 'Pending') != 'Completed' %}
                         <form method="POST" action="{{ url_for('admin.complete_donor_donation', donor_id=row.id) }}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                             <input type="number" name="units_donated" min="1" max="5" value="1" required style="padding:6px;width:60px;">
                             <button class="btn btn-sm" type="submit">Complete</button>
@@ -193,19 +269,71 @@
                         <span style="color:green;font-weight:bold;">✓ Done</span>
                         {% endif %}
                     </td>
-                    <td>
-                        {% if (row.donation_status or 'Pending') != 'Completed' %}
-                        <form method="POST" action="{{ url_for('admin.reschedule_donor', donor_id=row.id) }}" style="display:flex;gap:6px;align-items:center;">
-                            <input type="date" name="scheduled_donation_at" value="{% if row.scheduled_donation_at %}{{ row.scheduled_donation_at.strftime('%Y-%m-%d') }}{% endif %}" required style="padding:6px;">
-                            <button class="btn btn-sm btn-outline" type="submit">Reschedule</button>
-                        </form>
-                        {% else %}
-                        <span style="color:green;font-weight:bold;">✓ Done</span>
-                        {% endif %}
-                    </td>
                 </tr>
                 {% else %}
                 <tr><td colspan="13" style="text-align:center;padding:20px;">No approved donor history yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section class="section-card" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border: 2px solid #fcd34d;">
+    <h3 style="color: #92400e; margin-top: 0;">📅 Admin Camp Donations Pending</h3>
+    <p style="color: #78350f; font-size: 14px; margin-bottom: 16px;">
+        Donors who have selected donation dates directly (without blood camp events). Mark as donated or missed below.
+    </p>
+    <div class="table-responsive">
+        <table class="table table-spaced">
+            <thead style="background: #fcd34d;">
+                <tr>
+                    <th style="width:60px;">ID</th>
+                    <th style="width:140px;">Donor Name</th>
+                    <th style="width:180px;">Email</th>
+                    <th style="width:100px;">Blood Group</th>
+                    <th style="width:120px;">Phone</th>
+                    <th style="width:130px;">Selected Date</th>
+                    <th style="width:90px;">Status</th>
+                    <th style="width:160px;">Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in admin_camp_donations %}
+                <tr class="{{ 'admin-donation-row-overdue' if row.selected_donation_date < today_date else 'admin-donation-row-normal' }}">
+                    <td>{{ row.donor_id }}</td>
+                    <td style="font-weight: 600;">{{ row.donor_name or 'N/A' }}</td>
+                    <td style="font-size: 0.9rem;">{{ row.donor_email }}</td>
+                    <td>{{ row.blood_group or 'N/A' }}</td>
+                    <td>{{ row.donor_phone or 'N/A' }}</td>
+                    <td style="font-weight: 600;" class="{{ 'admin-donation-date-overdue' if row.selected_donation_date < today_date else 'admin-donation-date-normal' }}">
+                        {{ row.selected_donation_date.strftime('%b %d, %Y') if row.selected_donation_date else '—' }}
+                        {% if row.selected_donation_date < today_date %}
+                            <span style="display: block; font-size: 11px; color: #991b1b; margin-top: 2px;">📌 Overdue</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.status == 'Pending' %}
+                            <span style="background: #dbeafe; color: #1e40af; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">⏳ Pending</span>
+                        {% elif row.status == 'Missed' %}
+                            <span style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">❌ Missed</span>
+                        {% else %}
+                            <span style="color: #666;">{{ row.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <form method="POST" action="{{ url_for('admin.mark_admin_camp_donation_complete', donation_id=row.id) }}" style="display: inline;">
+                                <input type="number" name="units_donated" min="1" max="5" value="1" required style="padding:6px;width:60px;">
+                                <button type="submit" class="btn btn-sm" style="background: #16a34a; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">✓ Donated</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('admin.mark_admin_camp_donation_missed', donation_id=row.id) }}" style="display: inline;">
+                                <button type="submit" class="btn btn-sm" style="background: #f97316; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">⚠ Missed</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="8" style="text-align:center;padding:20px;color:#666;">No admin camp donations pending.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -238,11 +366,16 @@
         <thead>
             <tr>
                 <th>ID</th>
-                <th>Hospital</th>
+                <th>Requester</th>
                 <th>Patient</th>
                 <th>Blood Group</th>
                 <th>Units</th>
                 <th>Emergency</th>
+                <th>AI Priority</th>
+                <th>Fraud Risk</th>
+                <th>Relationship</th>
+                <th>Medical Proof</th>
+                <th>Accepted Donors</th>
                 <th>Approve</th>
                 <th>Reject</th>
             </tr>
@@ -251,16 +384,38 @@
             {% for row in blood_requests %}
             <tr>
                 <td>{{ row.id }}</td>
-                <td>{{ row.hospital_name }}</td>
+                <td>{{ row.request_source_name }}</td>
                 <td>{{ row.patient_name }}</td>
                 <td>{{ row.blood_group }}</td>
                 <td>{{ row.units_required }} ({{ row.required_ml }}ml)</td>
-                <td>{% if row.emergency %}Yes{% else %}No{% endif %}</td>
+                <td>{{ row.emergency_level or ('Urgent' if row.emergency else 'Normal') }}</td>
+                <td>
+                    <strong>{{ row.ai_priority_score or 0 }}</strong>
+                </td>
+                <td>
+                    {% set fraud_score = row.fraud_risk_score or 0 %}
+                    {% if fraud_score >= 70 %}
+                        <span style="color:#b71c1c;font-weight:700;">High ({{ fraud_score }})</span>
+                    {% elif fraud_score >= 40 %}
+                        <span style="color:#ef6c00;font-weight:700;">Medium ({{ fraud_score }})</span>
+                    {% else %}
+                        <span style="color:#2e7d32;font-weight:700;">Low ({{ fraud_score }})</span>
+                    {% endif %}
+                </td>
+                <td>{{ row.relationship_with_patient or '—' }}</td>
+                <td>
+                    {% if row.medical_proof_path %}
+                    <a class="btn btn-sm" href="{{ url_for('admin.view_request_proof', request_id=row.id) }}" target="_blank">View</a>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+                <td>{{ row.accepted_donor_count or 0 }} / {{ row.units_required }}</td>
                 <td><a class="btn btn-sm" href="{{ url_for('admin.approve_blood_request', request_id=row.id) }}">Approve</a></td>
                 <td><a class="btn btn-sm btn-outline" href="{{ url_for('admin.reject_blood_request', request_id=row.id) }}">Reject</a></td>
             </tr>
             {% else %}
-            <tr><td colspan="8">No pending blood requests.</td></tr>
+            <tr><td colspan="13">No pending blood requests.</td></tr>
             {% endfor %}
         </tbody>
     </table>
@@ -494,5 +649,81 @@
             }
         });
     }
+
+    (() => {
+        const liveBody = document.getElementById('admin-command-live-body');
+        const stockAlert = document.getElementById('admin-live-stock-alert');
+
+        if (!liveBody || !stockAlert) {
+            return;
+        }
+
+        const renderStockAlert = (alerts) => {
+            if (!alerts || !alerts.length) {
+                stockAlert.style.display = 'none';
+                stockAlert.textContent = '';
+                return;
+            }
+
+            const text = alerts
+                .map((alert) => `${alert.blood_group} (${alert.units_available} units)`)
+                .join(', ');
+            stockAlert.style.display = 'block';
+            stockAlert.textContent = `Emergency Stock Alert: ${text}`;
+        };
+
+        const renderQueue = (rows) => {
+            if (!rows || !rows.length) {
+                liveBody.innerHTML = '<tr><td colspan="9">No active requests in command center.</td></tr>';
+                return;
+            }
+
+            liveBody.innerHTML = rows.map((row) => {
+                const flags = row.fraud_flags || '-';
+                const fraudLabel = `${row.fraud_risk_score || 0} (${flags})`;
+                const transferAction = row.can_transfer
+                    ? `<form method="POST" action="${row.transfer_url}" style="display:inline;"><button class="btn btn-sm" type="submit">Transfer</button></form>`
+                    : '';
+
+                return `
+                    <tr>
+                        <td>#${row.id}</td>
+                        <td>${row.request_source_name || 'Requester'} (${row.requester_role || 'N/A'})</td>
+                        <td>${row.patient_name || 'N/A'}</td>
+                        <td>${row.blood_group || 'N/A'} | ${row.units_required || 0} units</td>
+                        <td><strong>${row.ai_priority_score || 0}</strong></td>
+                        <td>${fraudLabel}</td>
+                        <td>${row.accepted_donor_count || 0} / ${row.units_required || 0}</td>
+                        <td>${row.status || 'Pending'}</td>
+                        <td>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                <a class="btn btn-sm" href="${row.approve_url}">Approve</a>
+                                <a class="btn btn-sm btn-outline" href="${row.reject_url}">Reject</a>
+                                ${transferAction}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        };
+
+        const pollCommandCenter = async () => {
+            try {
+                const response = await fetch("{{ url_for('admin.command_center_api') }}", {
+                    headers: { "X-Requested-With": "XMLHttpRequest" }
+                });
+                if (!response.ok) throw new Error('Failed');
+
+                const payload = await response.json();
+                renderQueue(payload.queue || []);
+                renderStockAlert(payload.emergency_stock_alerts || []);
+            } catch (_error) {
+                liveBody.innerHTML = '<tr><td colspan="9">Failed to load command center updates.</td></tr>';
+            }
+        };
+
+        pollCommandCenter();
+        setInterval(pollCommandCenter, 15000);
+    })();
 </script>
 {% endblock %}

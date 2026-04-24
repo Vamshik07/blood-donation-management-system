@@ -1,237 +1,246 @@
-# Blood Donation Management System
+# AI-Powered Blood Donation Management System
 
-A Flask + MySQL web application for centralized blood donation management with role-based portals:
-- Admin
-- Donor
-- Hospital
-- Blood Camp
+Real-time digital blood network connecting donors, requesters, hospitals, and blood camp organizers for faster emergency response and safer blood request handling.
 
-The system includes approval workflows, donor matching logic, emergency prioritization, and optional SMS notifications.
+## Project Goal
 
-## Architecture
+Build a scalable healthcare platform that:
+- Connects donors and patients quickly
+- Reduces delay in emergency blood availability
+- Prevents fraudulent blood requests
+- Supports hospitals and blood camp operations
+- Uses AI modules for matching, prioritization, and prediction
 
-### 1) Presentation Layer
-- HTML templates in `templates/`
-- Shared styling in `static/css/style.css`
-- Minimal JS in `static/js/`
+## Current Implementation
 
-### 2) Application Layer
-- Flask app bootstrap in `app.py`
-- Route modules in `routes/`
-- Business/auth helpers in `models/models.py`
-- Notification service in `services/notifications.py`
+This repository currently runs as a **Flask + MySQL** web platform with role-based dashboards and notification services.
 
-### 3) Database Layer
-- MySQL schema in `database/schema.sql`
-- Incremental migrations in `database/migrations/`
+## System Roles
 
-## Features
+### Admin
+- Approves blood requests
+- Approves hospitals
+- Approves blood camp events
+- Manages inventory, users, donations, analytics, and notifications
 
-- Landing page and Discover role selection page
-- Role-based login/register flow
-- Google OAuth validation scaffold for non-admin roles
-- Email-based password reset for all roles (admin, donor, hospital, camp)
-- Admin-only approval/rejection authority
-- Donor profile eligibility checks:
-  - Age 18 to 60
-  - Health checkbox
-  - Fitness confirmation
-- Blood unit rule: `1 unit = 450ml`
-- Hospital requests with emergency priority
-- Smart donor matching score (city match, donation recency, rare-group priority)
-- Unit-level blood inventory management:
-  - tracking ID per unit
-  - collection source (Camp / Direct Donor)
-  - collection and expiry dates
-  - status lifecycle (Available / Reserved / Used / Expired)
-- Auto-expiry and low-stock emergency alerts on dashboards
-- Request traceability:
-  - status timeline history
-  - allocation details with unit tracking IDs
-- Blood camp event lifecycle:
-  - create upcoming camp events (date, location, target units, required groups)
-  - donor event registration with preferred time slot
-  - mark registered donors as donated and auto-update blood stock
-  - camp history and statistics (units collected, most common group, success rate)
-- Admin analytics dashboard (Chart.js):
-  - monthly units collected
-  - blood group distribution
-  - emergency vs normal request split
-  - approval rate and most active camp
-- Optional Twilio SMS notifications:
-  - donor profile approval/rejection
-  - hospital profile approval/rejection
-  - camp profile approval/rejection
-  - hospital blood request approval/rejection
+### Users (Donors / Requesters)
+- Self-register (no admin approval required)
+- Register as donor
+- Submit blood requests
+- Respond to donor alerts
+- Register for approved blood camps
 
-## Folder Structure
+### Hospitals
+- Register and log in to hospital dashboard
+- View inventory
+- Request blood and track status
+- Requires admin approval
 
-```text
-DanationManagement/
-├── app.py
-├── config.py
-├── requirements.txt
-├── .env
-├── README.md
-├── templates/
-├── static/
-├── routes/
-├── models/
-├── services/
-├── database/
-│   ├── schema.sql
-│   ├── MIGRATIONS.md
-│   └── migrations/
-└── scripts/
-```
+### Blood Camp Organizers
+- Submit camp events and volunteer details
+- Camp events require admin approval before publishing
 
-## Prerequisites
+## Supported Blood Groups
 
-- Python 3.10+
-- MySQL Server
-- (Optional) Google OAuth credentials
-- (Optional) Twilio account for SMS
+`A+`, `A-`, `B+`, `B-`, `AB+`, `AB-`, `O+`, `O-`
 
-## Setup
+These groups are used in donor matching, request routing, and inventory tracking.
 
-1. Install dependencies:
+## Core Workflows
 
-```bash
-pip install -r requirements.txt
-```
+### 1) Donor Registration & Eligibility
+Required fields:
+- Full name, email, phone, password
+- Blood group, age, gender
+- Location (city/area)
+- Last donation date
+- Health eligibility answers
 
-2. Create database schema:
-- Execute `database/schema.sql` in MySQL.
+Eligibility rules:
+- Age 18 to 60
+- Minimum 3 months since last donation
+- Must pass health eligibility screening
 
-3. Run migrations (if upgrading existing DB):
-- Follow `database/MIGRATIONS.md`.
+Eligible users are marked as active donors.
 
-4. Configure environment in `.env`:
+### 2) Fraud-Protected Blood Request
+Every request requires:
+- Patient name
+- Required blood group
+- Hospital name and location
+- Units required
+- Emergency level (`Normal` / `Urgent`)
+- Contact number
+- Relationship with patient
+- Medical proof document upload
+- Notes
 
-```env
-SECRET_KEY=change-this-secret
-JWT_SECRET=change-this-jwt-secret
-MYSQL_HOST=localhost
-MYSQL_USER=root
-MYSQL_PASSWORD=
-MYSQL_DB=donation_management
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-TWILIO_ACCOUNT_SID=
-TWILIO_AUTH_TOKEN=
-TWILIO_FROM_NUMBER=
-```
+All requests go through admin verification.
 
-5. Insert default admin user:
-- Generate hash:
+### 3) Blood Request Lifecycle
+1. Requester submits blood request
+2. Admin approves or rejects
+3. If approved, system finds nearby eligible donors with matching blood group
+4. Notifications sent (email, SMS, in-app)
+5. Donors accept or decline
+6. Requester sees accepted donor contacts (limited by units required)
 
-```bash
-python scripts/generate_admin_hash.py
-```
+### 4) Emergency Mode
+For urgent cases:
+- Instant nearby donor search
+- Priority notification dispatch
+- Real-time donor response updates
+- Immediate accepted donor visibility
 
-- Run generated SQL insert for `admin@blood.com`.
+## Portals
 
-6. Start app:
+### User Dashboard
+- Submit blood requests
+- View nearby camps
+- Respond to donation requests
+- Track donation history
+- Manage availability and notifications
 
-```bash
+### Hospital Dashboard
+- View blood inventory
+- Request blood
+- Track request history/status
+
+### Admin Dashboard
+- Manage blood requests, hospitals, camps, users
+- Manage blood inventory
+- View analytics and donation activity
+
+## AI Modules (Planned / Optional)
+
+- AI donor matching (blood group, distance, history, response rate)
+- Emergency priority detection
+- Blood demand prediction by city
+- Smart donor eligibility checker
+- AI chatbot for eligibility/camp/availability questions
+- Fraud detection for suspicious/repeated requests
+
+## AI Features Implemented
+
+- AI-assisted request priority score (`ai_priority_score`) using emergency level, units, blood rarity, and critical-note keywords.
+- Fraud risk score (`fraud_risk_score`) with flags (`fraud_flags`) based on repeated request/contact patterns.
+- Enhanced donor matching now incorporates donor response rate and enforces active-donor eligibility window.
+
+## Live Features
+
+- Donor map with blood-group and distance filters
+- Nearby hospital visibility
+- Real-time donor availability
+- Donor reward tiers (Bronze, Silver, Gold, Life Saver)
+- Donation eligibility reminders
+- Homepage impact counters (donors, requests, lives saved, camps)
+
+## Prompt Coverage Notes
+
+Implemented in this repo:
+- Donor accounts are auto-created (no admin approval gate for donor participation).
+- Blood requests remain admin-verified before donor response workflows.
+- Expanded donor registration/profile fields for eligibility capture.
+- Real-time admin/hospital/donor monitoring panels via polling APIs.
+
+Still planned for full enterprise scope:
+- React/Flutter frontend and Node/Django API migration (current stack is Flask + Jinja).
+- True geospatial radius mapping (current matching uses location text similarity).
+- ML demand prediction and AI chatbot as separate production AI services.
+
+## Data Model (Key Tables)
+
+- `users`
+- `blood_requests`
+- `donor_responses`
+- `hospitals`
+- `hospital_requests`
+- `blood_inventory`
+- `blood_camps`
+- `notifications`
+
+## Tech Stack
+
+### Current Repo
+- Backend: Flask (Python)
+- Database: MySQL
+- UI: Jinja templates + CSS/JS
+- Notifications: Email + SMS integrations
+
+### Scalable Target Architecture
+- Frontend: React or Flutter
+- Backend API: Node.js/Express or Django
+- Database: PostgreSQL or Firebase
+- External services: Email API, SMS gateway, Map API
+- AI: Python ML services
+
+## Quick Start (This Repo)
+
+### Run with VS Code task
+- `Run Blood Donation App`
+
+### Install dependencies only
+- `Install Dependencies Only`
+
+### Run with virtual environment (recommended)
+```powershell
+cd C:\xampp\htdocs\DanationManagement
+.\.venv-1\Scripts\Activate.ps1
 python app.py
 ```
 
-### Quick demo donor seed (testing)
-
-Create or refresh a ready-to-login donor account:
-
-```bash
-python scripts/seed_demo_donor.py
-```
-
-Default credentials:
-- Email: `demo.donor@gmail.com`
-- Password: `DemoDonor@123`
-
-### Quick demo hospital seed (testing)
-
-Create or refresh a ready-to-login hospital account:
-
-```bash
-python scripts/seed_demo_hospital.py
-```
-
-Default credentials:
-- Email: `demo.hospital@gmail.com`
-- Password: `DemoHospital@123`
-
-### Quick demo camp seed (testing)
-
-Create or refresh a ready-to-login blood camp account:
-
-```bash
-python scripts/seed_demo_camp.py
-```
-
-Default credentials:
-- Email: `demo.camp@gmail.com`
-- Password: `DemoCamp@123`
-
-### Windows one-command setup + run
-
-From project root in PowerShell:
-
+Or run directly without activation:
 ```powershell
+cd C:\xampp\htdocs\DanationManagement
+.\.venv-1\Scripts\python.exe app.py
+```
+
+### PowerShell (manual)
+```powershell
+cd C:\xampp\htdocs\DanationManagement
 ./scripts/setup_and_run.ps1
 ```
 
-Optional flags:
+### Tier Routing Configuration
+Admin routing controls can be adjusted via `.env`:
 
-```powershell
-./scripts/setup_and_run.ps1 -SkipInstall
-./scripts/setup_and_run.ps1 -SkipRun
+```env
+DONOR_ROUTING_EMERGENCY_PRIORITY_THRESHOLD=70
+RARE_BLOOD_PROTECTION_ENABLED=true
 ```
 
-### VS Code Task Runner
+- `DONOR_ROUTING_EMERGENCY_PRIORITY_THRESHOLD`: Minimum AI priority score required to activate Tier 4 (`O-`) emergency routing.
+- `RARE_BLOOD_PROTECTION_ENABLED`: When `true`, protects `O-` from non-critical cross-group usage.
 
-Tasks are preconfigured in `.vscode/tasks.json`:
+## Security & Compliance Essentials
 
-- `Run Blood Donation App`
-- `Install Dependencies Only`
+- Role-based access control
+- Admin approvals for high-risk workflows
+- Medical-proof upload for blood requests
+- Audit-friendly request/donation tracking
+- Input validation and secure auth/session practices
 
-Use: **Terminal → Run Task**
+## Project Status
 
-Open:
-- `http://127.0.0.1:5000/`
+Production-oriented foundation is implemented. AI modules and map intelligence can be enabled incrementally as separate services.
 
-## Default Flow
+## Upgrade Scaffold Added
 
-1. Landing Page
-2. Discover Page
-3. Choose role
-4. Register/Login
-5. Submit profile/request
-6. Admin approves/rejects
-7. Approved data becomes active
+A parallel Django REST + PostgreSQL migration scaffold is available at [upgrade/drf_backend](upgrade/drf_backend) with geospatial-ready models and starter APIs.
 
-## API Endpoints (Admin)
+## Technologies and Languages Used
 
-- `GET /admin/api/metrics`
-- `GET /admin/api/blood-availability`
-- `GET /admin/api/analytics`
+### Languages
+- Python
+- SQL
+- HTML
+- CSS
+- JavaScript
+- PowerShell
 
-## Important Notes
-
-- Admin registration is disabled by design.
-- Admin login only works for credentials stored in `admin` table.
-- Default seeded admin (on first run after schema setup): `onlinedonation185@gmail.com`.
-- SMS delivery requires valid Twilio config.
-- Google OAuth requires valid Google client credentials.
-- Legacy monolithic template `templates/dashboard.html` has been removed; use role dashboards only.
-
-## Blood Information Context
-
-The project UI and rule messaging align with commonly used blood-safety guidance concepts such as timely access, voluntary donation, and screening-focused systems (for example, WHO blood safety publications). Actual medical eligibility criteria can vary by country and blood service policy; always verify with local regulations.
-
-## Troubleshooting
-
-- If imports fail in editor, ensure the selected Python interpreter matches your project environment.
-- If MySQL connection fails, recheck `MYSQL_*` values in `.env`.
-- If OAuth button fails, confirm `GOOGLE_CLIENT_ID` and callback settings.
-- If SMS does not send, confirm Twilio values and destination phone format (E.164 recommended).
+### Technologies
+- Flask (web framework)
+- Jinja2 (templating)
+- MySQL (database)
+- Django REST Framework scaffold (upgrade path)
+- VS Code Tasks (development workflow)
